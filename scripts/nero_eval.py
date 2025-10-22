@@ -35,6 +35,11 @@ def generate_orbit(
     group_elements : list
         List of group parameters corresponding to each transformation (e.g. angles or shifts).
     """
+    image = np.asarray(image)
+    if image.ndim == 1:
+        image = image.reshape(28, 28)
+    image = image.astype(np.float32)
+
     orbit = []
     group_elements = []
 
@@ -78,8 +83,6 @@ def generate_orbit(
 # =====================================================
 #  NERO EVALUATION EXAMPLE
 # =====================================================
-import numpy as np
-
 def evaluate_orbit(
     model,
     image,
@@ -122,11 +125,35 @@ def evaluate_orbit(
     return losses, group_elements
 
 
+# === Aggregate NERO computation ===
+def evaluate_aggregate_orbit(model, test_df, label_map, group="rotation", num_steps=360, n_samples=50):
+    """Compute aggregate NERO curve across multiple samples."""
+    all_confidences = []
+
+    for i in range(n_samples):
+        raw_label = int(test_df.iloc[i]["label"])
+        image = test_df.drop("label", axis=1).iloc[i].values.reshape(28, 28)
+
+        losses, angles = evaluate_orbit(
+            model,
+            image,
+            label_raw=raw_label,
+            group=group,
+            num_steps=num_steps,
+            label_map=label_map,
+        )
+        all_confidences.append(losses)
+
+    all_confidences = np.array(all_confidences)  # shape (n_samples, num_steps)
+    mean_conf = np.mean(all_confidences, axis=0)
+    std_conf = np.std(all_confidences, axis=0)
+    return angles, mean_conf, std_conf
+
 
 # =====================================================
 #  VISUALIZATION: CIRCULAR NERO PLOT
 # =====================================================
-def plot_nero(losses, group_elements, title="NERO Plot (0–1 scale)"):
+def plot_individual_nero(losses, group_elements, title="NERO Plot (0–1 scale)"):
     """Plot NERO polar diagram with 0°=right, 90°=top, 180°=left, 270°=bottom,
     and radius fixed from 0–1 with horizontal tick labels."""
     # Convert degrees → radians
@@ -159,11 +186,35 @@ def plot_nero(losses, group_elements, title="NERO Plot (0–1 scale)"):
     plt.show()
 
 
+def plot_aggregate_and_individual(losses, angles, mean_conf, std_conf, title="NERO Aggregate + Individual"):
+    fig = plt.figure(figsize=(8, 8))
+    ax = plt.subplot(111, polar=True)
+
+    # individual
+    ax.plot(np.deg2rad(angles), losses, color="gray", alpha=0.5, label="Individual sample")
+
+    # aggregate mean
+    ax.plot(np.deg2rad(angles), mean_conf, color="royalblue", linewidth=2, label="Mean confidence")
+
+    # aggregate std shading
+    lower = np.clip(mean_conf - std_conf, 0, 1)
+    upper = np.clip(mean_conf + std_conf, 0, 1)
+    ax.fill_between(np.deg2rad(angles), lower, upper, color="royalblue", alpha=0.3, label="±1 SD")
+
+    ax.set_theta_zero_location("E")
+    ax.set_theta_direction(1)
+    ax.set_ylim(0, 1)
+    ax.set_title(title, va="bottom")
+    ax.legend(loc="lower left", bbox_to_anchor=(1.1, 0.1))
+    plt.tight_layout()
+    plt.show()
+
+
 # =====================================================
 #  EXAMPLE USAGE
 # =====================================================
 if __name__ == "__main__":
-    test_label = 0
+    test_label = 2
 
     # --- Load your trained model ---
     model = keras.models.load_model("models/model01.keras")
@@ -183,17 +234,15 @@ if __name__ == "__main__":
 
     # --- Evaluate the orbit ---
     image = np.array(image, dtype=np.float32)
-    losses, angles = evaluate_orbit(
-        model,
-        image,
-        label_raw=raw_label,
-        group="rotation",
-        num_steps=360,
-        label_map=label_map
-    )
 
-    # --- Plot NERO ---
-    plot_nero(losses, angles, title=f"NERO for Label {test_label} (0–1 scale)")
+    # individual NERO
+    losses, angles = evaluate_orbit(model, image, label_raw=raw_label, group="rotation", num_steps=360, label_map=label_map)
+
+    # aggregate NERO
+    angles, mean_conf, std_conf = evaluate_aggregate_orbit(model, test_df, label_map, group="rotation", num_steps=360, n_samples=5)
+
+    # plot both together
+    plot_aggregate_and_individual(losses, angles, mean_conf, std_conf, title="NERO: Individual vs Aggregate")
 
     # --- Sanity check: unrotated confidence ---
     x0 = image.astype("float32") / 255.0
