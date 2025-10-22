@@ -2,7 +2,8 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 from tensorflow import keras
-from tensorflow.keras.activations import softmax
+from sklearn.decomposition import PCA
+from matplotlib.widgets import Button
 import pandas as pd
 
 # =====================================================
@@ -153,9 +154,14 @@ def evaluate_aggregate_orbit(model, test_df, label_map, group="rotation", num_st
 # =====================================================
 #  VISUALIZATION: CIRCULAR NERO PLOT
 # =====================================================
-def plot_individual_nero(losses, group_elements, title="NERO Plot (0–1 scale)"):
-    """Plot NERO polar diagram with 0°=right, 90°=top, 180°=left, 270°=bottom,
-    and radius fixed from 0–1 with horizontal tick labels."""
+def plot_individual_nero(losses, group_elements, title="NERO Plot (0–1 scale)", ax=None):
+    """
+    Plot a NERO polar diagram with:
+    - 0° = right (East), 90° = top, 180° = left, 270° = bottom
+    - radius fixed from 0–1
+    - horizontal (0°) radial tick labels
+    Works standalone or inside a composite figure when an existing ax is passed.
+    """
     # Convert degrees → radians
     if isinstance(group_elements[0], (int, float)):
         angles = np.deg2rad(group_elements)
@@ -164,8 +170,11 @@ def plot_individual_nero(losses, group_elements, title="NERO Plot (0–1 scale)"
 
     values = np.array(losses)
 
-    fig = plt.figure(figsize=(5, 5))
-    ax = plt.subplot(111, polar=True)
+    # --- Create subplot if not provided ---
+    created_fig = False
+    if ax is None:
+        fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=(5, 5))
+        created_fig = True
 
     # --- Plot confidence curve ---
     ax.plot(angles, values, linewidth=2, color="royalblue")
@@ -176,38 +185,102 @@ def plot_individual_nero(losses, group_elements, title="NERO Plot (0–1 scale)"
     ax.set_yticklabels([f"{v:.1f}" for v in np.linspace(0, 1, 6)])
 
     # --- Set orientation ---
-    ax.set_theta_zero_location("E")   # 0° on the right (East)
+    ax.set_theta_zero_location("E")   # 0° on the right
     ax.set_theta_direction(1)         # counterclockwise rotation
-    ax.set_rlabel_position(0)         # put radius labels along 0° line (horizontal)
+    ax.set_rlabel_position(0)         # labels along horizontal (0°)
 
     # --- Aesthetic tweaks ---
     ax.set_title(title, va="bottom")
+
+    if created_fig:
+        plt.tight_layout()
+        plt.show()
+
+    return ax
+
+
+def plot_pca_with_nero_panel(model, coords, images, raw_labels, label_map,
+                             group="rotation", num_steps=72,
+                             nero_plot_func=None):
+    """
+    Interactive PCA (left) + live NERO plot (right).
+    Clicking a point recomputes its orbit and calls `nero_plot_func`
+    (your plot_individual_nero/plot_nero) to render it on the right axis.
+    """
+    if nero_plot_func is None:
+        raise ValueError("Please pass nero_plot_func=plot_nero or plot_individual_nero.")
+
+    # --- figure layout ---
+    fig = plt.figure(figsize=(12, 6))
+    gs = fig.add_gridspec(1, 2, width_ratios=[2, 1])
+    ax_pca = fig.add_subplot(gs[0, 0])
+    ax_nero = fig.add_subplot(gs[0, 1], projection="polar")
+
+    # --- PCA scatter ---
+    sc = ax_pca.scatter(coords[:, 0], coords[:, 1], c=raw_labels,
+                        cmap="tab20", s=25, alpha=0.8)
+    plt.colorbar(sc, ax=ax_pca, label="Raw label index")
+    ax_pca.set_title("Feature PCA (click to view NERO)")
+
+    # --- Empty placeholder for NERO plot ---
+    ax_nero.set_title("NERO plot", va="bottom")
+    ax_nero.set_ylim(0, 1)
+    ax_nero.set_theta_zero_location("E")
+    ax_nero.set_theta_direction(1)
+
+    # --- click handler ---
+    def on_click(event):
+        if event.inaxes != ax_pca:
+            return
+        x, y = event.xdata, event.ydata
+        dists = np.hypot(coords[:, 0] - x, coords[:, 1] - y)
+        idx = np.argmin(dists)
+        image = images[idx][:, :, 0] * 255.0
+        raw_label = raw_labels[idx]
+        print(f"\n→ Selected index {idx}, label {raw_label}")
+
+        # Compute orbit
+        losses, angles = evaluate_orbit(
+            model,
+            image,
+            label_raw=raw_label,
+            group=group,
+            num_steps=num_steps,
+            label_map=label_map,
+        )
+
+        # --- clear old NERO plot and re-draw using your function ---
+        ax_nero.clear()
+        nero_plot_func(losses, angles, title=f"NERO for label {raw_label}", ax=ax_nero)
+
+        fig.canvas.draw_idle()
+
+    fig.canvas.mpl_connect("button_press_event", on_click)
     plt.tight_layout()
     plt.show()
 
 
-def plot_aggregate_and_individual(losses, angles, mean_conf, std_conf, title="NERO Aggregate + Individual"):
-    fig = plt.figure(figsize=(8, 8))
-    ax = plt.subplot(111, polar=True)
+# =====================================================
+#  PCA
+# =====================================================
+def compute_feature_pca(model, test_df, label_map, n_samples=500):
+    """Extract penultimate-layer features for a subset of images, run PCA (2D), and return coordinates."""
+    sample_df = test_df.sample(n_samples, random_state=42).reset_index(drop=True)
 
-    # individual
-    ax.plot(np.deg2rad(angles), losses, color="gray", alpha=0.5, label="Individual sample")
+    images = sample_df.drop("label", axis=1).values.reshape(-1, 28, 28, 1).astype("float32") / 255.0
+    labels = sample_df["label"].values
 
-    # aggregate mean
-    ax.plot(np.deg2rad(angles), mean_conf, color="royalblue", linewidth=2, label="Mean confidence")
+    # Build feature-extraction model (robust version)
+    feature_model = keras.Sequential(model.layers[:-1])
 
-    # aggregate std shading
-    lower = np.clip(mean_conf - std_conf, 0, 1)
-    upper = np.clip(mean_conf + std_conf, 0, 1)
-    ax.fill_between(np.deg2rad(angles), lower, upper, color="royalblue", alpha=0.3, label="±1 SD")
+    feats = feature_model.predict(images, verbose=0)
 
-    ax.set_theta_zero_location("E")
-    ax.set_theta_direction(1)
-    ax.set_ylim(0, 1)
-    ax.set_title(title, va="bottom")
-    ax.legend(loc="lower left", bbox_to_anchor=(1.1, 0.1))
-    plt.tight_layout()
-    plt.show()
+    pca = PCA(n_components=2)
+    coords = pca.fit_transform(feats)
+
+    mapped_labels = np.array([label_map[int(lbl)] for lbl in labels])
+    return coords, images, labels, mapped_labels
+
 
 
 # =====================================================
@@ -235,14 +308,19 @@ if __name__ == "__main__":
     # --- Evaluate the orbit ---
     image = np.array(image, dtype=np.float32)
 
-    # individual NERO
-    losses, angles = evaluate_orbit(model, image, label_raw=raw_label, group="rotation", num_steps=360, label_map=label_map)
+    # Compute PCA on feature embeddings
+    # Force model to build its input graph
+    _ = model.predict(np.zeros((1, 28, 28, 1)), verbose=0)
+    coords, images, raw_labels, mapped_labels = compute_feature_pca(
+        model, test_df, label_map, n_samples=300
+    )
 
-    # aggregate NERO
-    angles, mean_conf, std_conf = evaluate_aggregate_orbit(model, test_df, label_map, group="rotation", num_steps=360, n_samples=5)
-
-    # plot both together
-    plot_aggregate_and_individual(losses, angles, mean_conf, std_conf, title="NERO: Individual vs Aggregate")
+    # Call with your plotting function
+    plot_pca_with_nero_panel(
+        model, coords, images, raw_labels, label_map,
+        group="rotation", num_steps=90,
+        nero_plot_func=plot_individual_nero
+    )
 
     # --- Sanity check: unrotated confidence ---
     x0 = image.astype("float32") / 255.0
