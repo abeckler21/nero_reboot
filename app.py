@@ -249,4 +249,4 @@ def get_confidence_hist():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)

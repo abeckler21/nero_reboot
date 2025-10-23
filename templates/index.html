@@ -354,31 +354,37 @@
         });
     }
 
-    // ===== Button Toggles =====
+    // ===== Unified Button Toggle Handler =====
+    function setActiveButton(activeBtn) {
+      [neroBtn, iceBtn, histBtn].forEach(btn => btn.classList.remove("active"));
+      activeBtn.classList.add("active");
+    }
+
+    // NERO mode
     neroBtn.onclick = () => {
       currentMode = "nero";
-      neroBtn.classList.add("active");
-      iceBtn.classList.remove("active");
+      setActiveButton(neroBtn);
       if (lastSelectedIndex !== null) fetchPlot(lastSelectedIndex, "nero");
     };
 
+    // ICE mode
     iceBtn.onclick = () => {
       currentMode = "ice";
-      iceBtn.classList.add("active");
-      neroBtn.classList.remove("active");
+      setActiveButton(iceBtn);
       if (lastSelectedIndex !== null) fetchPlot(lastSelectedIndex, "ice");
     };
 
+    // Confidence histogram mode
     histBtn.onclick = () => {
       currentMode = "confidence_hist";
-      [neroBtn, iceBtn, histBtn].forEach(btn => btn.classList.remove("active"));
-      histBtn.classList.add("active");
+      setActiveButton(histBtn);
       if (lastSelectedIndex !== null) {
         fetchPlot(lastSelectedIndex, "confidence_hist");
       } else {
         imgTag.alt = "Please select a sample point first.";
       }
     };
+
 
     // ===== Click handler for PCA points =====
     document.getElementById('pca').on('plotly_click', function(event) {
