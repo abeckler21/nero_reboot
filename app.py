@@ -74,7 +74,7 @@ def get_nero():
 
     # --- Create Matplotlib figure like in nero_eval.py ---
     fig = plt.figure(figsize=(4.8, 6))
-    gs = fig.add_gridspec(2, 1, height_ratios=[1, 1.5])
+    gs = fig.add_gridspec(2, 1, height_ratios=[0.75, 1.5])
     ax_img = fig.add_subplot(gs[0])
     ax_nero = fig.add_subplot(gs[1], projection="polar")
 
