@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from nero_eval import evaluate_orbit, plot_individual_nero
 from io import BytesIO
 import base64
+import math
 
 
 app = Flask(__name__)
@@ -173,6 +174,7 @@ def get_pca_dim():
     ]
     return jsonify(data)
 
+
 @app.route("/get_confidence_hist", methods=["POST"])
 def get_confidence_hist():
     """Generate histogram of predicted confidences across all labels for the selected image."""
@@ -183,31 +185,38 @@ def get_confidence_hist():
 
     x = image[None, ..., None]
     probs = model.predict(x, verbose=0)[0]
-
     n_classes = len(probs)
-    split_point = 13  # number of bars per row
 
-    # --- Split the bars into two rows ---
-    probs_top = probs[:split_point]
-    probs_bottom = probs[split_point:]
+    # --- Auto-determine number of rows based on class count ---
+    if n_classes <= 13:
+        n_rows = 1
+    elif n_classes <= 26:
+        n_rows = 2
+    elif n_classes <= 39:
+        n_rows = 3
+    else:
+        n_rows = 4
 
-    fig, axs = plt.subplots(2, 1, figsize=(6, 5), sharey=True)
+    per_row = math.ceil(n_classes / n_rows)
+    fig, axs = plt.subplots(n_rows, 1, figsize=(6, 2.5 * n_rows), sharey=True)
 
-    # --- Top row ---
-    bars_top = axs[0].bar(range(len(probs_top)), probs_top, color="steelblue", edgecolor="black")
-    # --- Bottom row ---
-    bars_bottom = axs[1].bar(range(len(probs_bottom)), probs_bottom, color="steelblue", edgecolor="black")
+    if n_rows == 1:
+        axs = [axs]  # make iterable for single-row case
 
-    # --- Highlight true label if in range ---
-    if label < split_point:
-        bars_top[label].set_color("orange")
-    elif label < n_classes:
-        bars_bottom[label - split_point].set_color("orange")
+    # --- Plot each row ---
+    for i in range(n_rows):
+        start = i * per_row
+        end = min(start + per_row, n_classes)
+        row_probs = probs[start:end]
+        bars = axs[i].bar(range(len(row_probs)), row_probs, color="steelblue", edgecolor="black")
 
-    # --- Add numeric labels above bars ---
-    for ax, bars in zip(axs, [bars_top, bars_bottom]):
+        # Highlight true label if in this range
+        if start <= label < end:
+            bars[label - start].set_color("orange")
+
+        # Add probability text above bars
         for p in bars:
-            ax.text(
+            axs[i].text(
                 p.get_x() + p.get_width() / 2,
                 p.get_height() + 0.02,
                 f"{p.get_height():.2f}",
@@ -215,16 +224,16 @@ def get_confidence_hist():
                 va="bottom",
                 fontsize=8,
             )
-        ax.set_ylim(0, 1.1)
-        ax.set_ylabel("Prob.")
-        ax.set_xticks(range(len(bars)))
-        ax.set_xticklabels(
-            [str(i + (0 if ax is axs[0] else split_point)) for i in range(len(bars))],
-            fontsize=8,
-        )
 
-    axs[0].set_title(f"Confidence Histogram — Sample {idx} (True label: {label})", fontsize=11)
-    axs[1].set_xlabel("Class Label")
+        axs[i].set_ylim(0, 1.1)
+        axs[i].set_ylabel("Prob.", fontsize=9)
+        axs[i].set_xticks(range(len(row_probs)))
+        axs[i].set_xticklabels([str(x) for x in range(start, end)], fontsize=8)
+
+        if i == 0:
+            axs[i].set_title(f"Confidence Histogram — Sample {idx} (True label: {label})", fontsize=11)
+        if i == n_rows - 1:
+            axs[i].set_xlabel("Class Label", fontsize=9)
 
     plt.tight_layout()
 
