@@ -15,8 +15,8 @@ app = Flask(__name__)
 # --- Load model and data once ---
 print("Loading model and data...")
 model = keras.models.load_model("training/models/model01.keras")
-train_df = pd.read_csv("training/images/sign_mnist_train.csv")
-test_df = pd.read_csv("training/images/sign_mnist_test.csv")
+train_df = pd.read_csv("training/sign_mnist_train.csv")
+test_df = pd.read_csv("training/sign_mnist_test.csv")
 
 unique_labels = sorted(np.unique(train_df["label"].values))
 label_map = {old: new for new, old in enumerate(unique_labels)}

@@ -293,8 +293,8 @@ if __name__ == "__main__":
     model = keras.models.load_model("training/models/model01.keras")
 
     # --- Load the Sign Language MNIST data ---
-    train_df = pd.read_csv("training/images/sign_mnist_train.csv")
-    test_df = pd.read_csv("training/images/sign_mnist_test.csv")
+    train_df = pd.read_csv("training/sign_mnist_train.csv")
+    test_df = pd.read_csv("training/sign_mnist_test.csv")
 
     # --- Recreate the SAME label_map used in training ---
     unique_labels = sorted(np.unique(train_df["label"].values))   # from your CSV
