@@ -100,5 +100,52 @@ def get_nero():
         "image": img_b64
     })
 
+
+@app.route("/get_ice", methods=["POST"])
+def get_ice():
+    """Compute ICE curves for selected features (pixels or channels)."""
+    import base64
+    from io import BytesIO
+    import matplotlib.pyplot as plt
+
+    i = int(request.json.get("index"))
+    raw_label = int(sample_df.iloc[i]["label"])
+    image = sample_df.drop("label", axis=1).iloc[i].values.reshape(28, 28, 1).astype("float32") / 255.0
+
+    # Choose a few pixels to vary (e.g., 4 corner pixels, 4 center pixels)
+    pixel_coords = [(7,7), (14,14), (7,20), (20,7)]
+    x_vals = np.linspace(0, 1, 20)
+    preds = {coord: [] for coord in pixel_coords}
+
+    for coord in pixel_coords:
+        img_mod = image.copy()
+        for val in x_vals:
+            img_mod[coord] = val
+            p = model.predict(img_mod[None, ...])[0][label_map[raw_label]]
+            preds[coord].append(p)
+
+    # --- Plot ICE curves ---
+    fig, ax = plt.subplots(figsize=(4.5, 3))
+    for coord, y in preds.items():
+        ax.plot(x_vals, y, label=f"pixel {coord}")
+    ax.set_xlabel("Pixel Intensity")
+    ax.set_ylabel(f"Predicted P(class={raw_label})")
+    ax.legend(fontsize=6)
+    ax.set_title("ICE curves for selected pixels")
+
+    buf = BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format="png", bbox_inches="tight", dpi=130)
+    plt.close(fig)
+    buf.seek(0)
+    img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+
+    return jsonify({
+        "label": int(raw_label),
+        "sample": i,
+        "image": img_b64
+    })
+
+
 if __name__ == "__main__":
     app.run(debug=True)
