@@ -9,6 +9,20 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from nero_eval import evaluate_orbit, plot_individual_nero
 
+
+def label_to_letter(label: int) -> str:
+    """
+    Convert SignMNIST label (0-23) to its corresponding letter (A-Y, skipping J and Z).
+    """
+    # Letters A-Z, excluding J (9) and Z (25)
+    letters = [chr(c) for c in range(ord('A'), ord('Z') + 1) if c not in (ord('J'), ord('Z'))]
+    
+    if 0 <= label < len(letters):
+        return letters[label]
+    else:
+        raise ValueError(f"Label {label} out of valid range (0-{len(letters)-1})")
+
+
 app = Flask(__name__)
 
 # --- Load model and data once ---
@@ -113,7 +127,7 @@ def plot_nero(r, theta_deg, title=None, include_indicator=False, label=None, sam
     # Construct title if not provided
     if title is None:
         if sample_idx is not None and label is not None:
-            title = f"NERO Orbit (Sample {sample_idx}, Label {label})"
+            title = f"NERO Orbit (Sample {sample_idx}, Label {label}: {label_to_letter(label)})"
         else:
             title = "NERO Orbit"
 
@@ -215,7 +229,7 @@ def get_aggregate_nero():
     selected_label = request.json.get("label")
     print(f"\n=== Aggregate NERO for: {selected_label} ===")
 
-    # --- Build label mapping (A–Y, excluding J and Z) ---
+    # --- Build label mapping (A-Y, excluding J and Z) ---
     letters = [chr(c) for c in range(ord("A"), ord("Z") + 1) if c not in (ord("J"), ord("Z"))]
     valid_labels = [i if i < 9 else i + 1 for i in range(len(letters))]
     label_map_inv = dict(zip(letters, valid_labels))
