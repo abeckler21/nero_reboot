@@ -2,224 +2,123 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>NERO Interactive Viewer</title>
+  <title>NERO Dashboard</title>
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
   <style>
     :root {
-      --border-color: #ddd;
-      --bg-light: #fafafa;
-      --accent-blue: #007bff;
+      --panel-padding: 20px;
     }
 
-    /* --- Reset & base --- */
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      width: 100%;
-      background-color: var(--bg-light);
+    body {
       font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      background-color: #fafafa;
+      margin: 0;
+      padding: var(--panel-padding);
+      height: 100vh;
+      overflow: hidden;
+      box-sizing: border-box;
+      gap: var(--panel-padding);
+    }
+
+    .panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      padding: 10px;
+      height: 100%;
+      box-sizing: border-box;
       overflow: hidden;
     }
 
-    /* --- Main layout container --- */
-    #dashboard {
-      display: flex;
-      flex-direction: row;
-      align-items: stretch;
-      width: 100%;
-      height: 100vh; /* full viewport height */
-      box-sizing: border-box;
-    }
-
-    /* --- Left: PCA plot container --- */
-    #pca-container {
-      flex: 0 0 60%;
-      height: 100%;
-      padding: 0.75rem;
-      box-sizing: border-box;
-      background: #fff;
-      border-right: 1px solid var(--border-color);
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-
-    /* PCA + legend side by side */
-    #pca-wrapper {
-      display: flex;
-      flex-direction: row;
-      flex: 1;
-      align-items: stretch;
-    }
-
-    /* Main PCA plot (85%) */
-    #pca {
-      flex: 1 1 85%;
-      height: 100%;
-    }
-
-    /* Legend on the right (15%) */
-    #legend {
-      flex: 0 0 15%;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 6px;
-      padding-left: 10px;
-      border-left: 1px solid var(--border-color);
-      overflow-y: auto;
-      background-color: #fff;
-      font-size: 13px;
-    }
-
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .legend-color {
-      width: 14px;
-      height: 14px;
-      border-radius: 3px;
-      border: 1px solid #444;
-    }
-
-    /* Slider controls below PCA */
-    #pca-controls {
-      margin-top: 10px;
-      padding: 8px;
-      background-color: #f8f9fa;
-      border-top: 1px solid var(--border-color);
-      border-radius: 4px;
-      font-size: 14px;
-    }
-
-    #pca-slider {
-      width: 100%;
-      margin-top: 4px;
-    }
-
-    /* --- Right: NERO / ICE diagnostics panel --- */
-    #nero-panel {
-      flex: 0 0 40%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      overflow-y: auto;
-      padding: 0.75rem;
-      box-sizing: border-box;
-      background-color: var(--bg-light);
-    }
-
     h2 {
-      margin: 10px 0 5px;
+      margin: 8px 0;
       text-align: center;
     }
 
-    /* --- Toggle buttons --- */
-    #view-buttons {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 10px;
+    #aggregate-plot, #nero-plot, #pca {
+      flex: 1;
+      width: 100%;
     }
 
-    #view-buttons button {
-      background-color: #e9ecef;
-      border: 1px solid var(--border-color);
-      border-radius: 5px;
-      padding: 6px 12px;
-      cursor: pointer;
+    #angle-slider {
+      width: 80%;
+      margin-top: 10px;
+      align-self: center;
+    }
+
+    #angle-value {
+      text-align: center;
       font-size: 14px;
-      transition: all 0.15s ease-in-out;
+      margin-top: 4px;
     }
 
-    #view-buttons button:hover {
-      background-color: #dce3ea;
-    }
-
-    #view-buttons button.active {
-      background-color: var(--accent-blue);
-      color: white;
-      font-weight: bold;
-      border-color: var(--accent-blue);
-    }
-
-    /* --- Diagnostic image scaling --- */
-    #diagnostic-img {
-      max-width: 95%;
-      max-height: 85vh;
-      object-fit: contain;
+    #original-canvas {
+      align-self: center;
       border: 1px solid #ccc;
       border-radius: 6px;
-      margin-top: 0.5rem;
+      background: white;
+      margin-bottom: 12px;
     }
 
-    /* --- Responsive layout --- */
-    @media (max-width: 1000px) {
-      #dashboard {
+    #legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      align-items: center;
+      gap: 8px 12px;
+      margin-top: 6px;
+      padding: 5px 10px;
+      border-top: 1px solid #ddd;
+      font-size: 13px;
+      overflow-y: auto;
+      max-height: 70px;
+    }
+
+    @media (max-width: 1200px) {
+      body {
         flex-direction: column;
         align-items: center;
         height: auto;
-        overflow-y: auto;
       }
-
-      #pca-container, #nero-panel {
+      .panel {
         width: 95%;
-        margin-bottom: 20px;
         height: 80vh;
-      }
-
-      #pca-wrapper {
-        flex-direction: column;
-      }
-
-      #legend {
-        flex-direction: row;
-        flex-wrap: wrap;
-        border-left: none;
-        border-top: 1px solid var(--border-color);
-        padding-top: 6px;
-        padding-left: 0;
-      }
-
-      #pca {
-        height: 70vh;
       }
     }
   </style>
 </head>
 
 <body>
-  <div id="dashboard">
-    <!-- Left: PCA Scatter + legend + slider -->
-    <div id="pca-container">
-      <div id="pca-wrapper">
-        <div id="pca"></div>
-        <div id="legend"></div>
-      </div>
-      <div id="pca-controls">
-        <label for="pca-slider">
-          <strong>Number of PCA Components:</strong>
-          <span id="pca-value">2</span>
-        </label>
-        <input type="range" id="pca-slider" min="2" max="50" value="2" step="1">
-      </div>
-    </div>
+  <!-- 1️⃣ Left: Aggregate NERO -->
+  <div class="panel" id="aggregate-panel">
+    <h2>Aggregate NERO</h2>
+    <select id="label-select" style="margin:10px; padding:6px; font-size:14px;">
+      <option value="All">All</option>
+    </select>
+    <div id="aggregate-plot"></div>
+  </div>
 
-    <!-- Right: NERO Image Panel -->
-    <div id="nero-panel">
-      <h2>Model Diagnostics</h2>
-      <div id="view-buttons">
-        <button id="btn-nero" class="active">NERO</button>
-        <button id="btn-ice">ICE</button>
-        <button id="btn-hist">Conf. Hist.</button>
-      </div>
-      <img id="diagnostic-img" src="" alt="Diagnostic plot will appear here">
-    </div>
+  <!-- 2️⃣ Middle: Individual NERO -->
+  <div class="panel" id="nero-panel">
+    <h2>Individual NERO</h2>
+    <canvas id="original-canvas" width="120" height="120"></canvas>
+    <div id="nero-plot" style="width:90%;max-width:480px;height:480px;align-self:center;"></div>
+    <input type="range" id="angle-slider" min="0" max="360" value="0" step="1" disabled>
+    <div id="angle-value">Angle: 0°</div>
+  </div>
+
+  <!-- 3️⃣ Right: PCA -->
+  <div class="panel" id="pca-panel">
+    <h2>PCA Embedding</h2>
+    <div id="pca"></div>
+    <div id="legend"></div>
   </div>
 
   <script>
@@ -232,75 +131,37 @@
       "#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b",
       "#e377c2","#7f7f7f","#bcbd22","#17becf","#aec7e8","#ffbb78",
       "#98df8a","#ff9896","#c5b0d5","#c49c94","#f7b6d2","#c7c7c7",
-      "#dbdb8d","#9edae5","#393b79","#637939","#8c6d31","#843c39","#7b4173"
+      "#dbdb8d","#9edae5","#393b79","#637939","#8c6d31","#843c39",
+      "#7b4173"
     ];
 
     const labelToColor = {};
-    uniqueLabels.forEach((lbl, i) => { labelToColor[lbl] = palette[i % palette.length]; });
+    uniqueLabels.forEach((lbl, i) => labelToColor[lbl] = palette[i % palette.length]);
     const colors = data.map(d => labelToColor[d.label]);
 
-    // ===== Configure PCA Scatter =====
+    // ===== Configure PCA scatter =====
     const trace = {
       x: data.map(d => d.x),
       y: data.map(d => d.y),
       mode: 'markers',
       type: 'scatter',
-      name: 'PCA samples',
       text: data.map(d => `Sample ${d.idx}<br>Label ${d.label}`),
       hoverinfo: 'text',
       marker: { color: colors, size: 7, line: { width: 0.5, color: '#333' } }
     };
-
     const layout = {
-      title: { text: 'Feature PCA (Click a point to view NERO / ICE)', font: { size: 20 } },
+      title: { text: 'Feature PCA (Click to view NERO)', font: { size: 18 } },
       hovermode: 'closest',
-      xaxis: { title: 'PCA Dimension 1', zeroline: false },
-      yaxis: { title: 'PCA Dimension 2', zeroline: false },
-      margin: { l: 60, r: 60, t: 60, b: 60 },
+      xaxis: { title: 'PCA 1' },
+      yaxis: { title: 'PCA 2' },
+      margin: { l: 60, r: 60, t: 40, b: 60 },
       plot_bgcolor: '#fff',
       paper_bgcolor: '#fff',
       showlegend: false,
     };
+    Plotly.newPlot('pca', [trace], layout, {responsive: true, displaylogo: false});
 
-    const config = { responsive: true, displaylogo: false };
-    Plotly.newPlot('pca', [trace], layout, config);
-
-    // ===== Dynamic PCA dimension slider =====
-    const slider = document.getElementById("pca-slider");
-    const pcaValue = document.getElementById("pca-value");
-
-    slider.addEventListener("input", function() {
-      pcaValue.textContent = slider.value;
-    });
-
-    slider.addEventListener("change", function() {
-      const dims = parseInt(slider.value);
-      fetch("/get_pca_dim", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dims: dims })
-      })
-      .then(res => res.json())
-      .then(newData => {
-        const updatedTrace = {
-          x: newData.map(d => d.x),
-          y: newData.map(d => d.y),
-          mode: 'markers',
-          type: 'scatter',
-          text: newData.map(d => `Sample ${d.idx}<br>Label ${d.label}`),
-          hoverinfo: 'text',
-          marker: {
-            color: newData.map(d => labelToColor[d.label]),
-            size: 7,
-            line: { width: 0.5, color: '#333' }
-          }
-        };
-        Plotly.react('pca', [updatedTrace], layout, config);
-      })
-      .catch(err => console.error("Error updating PCA:", err));
-    });
-
-    // ===== Create Legend (Key) =====
+    // ===== Build legend =====
     const legendDiv = document.getElementById("legend");
     uniqueLabels.forEach(lbl => {
       const item = document.createElement("div");
@@ -315,87 +176,101 @@
       legendDiv.appendChild(item);
     });
 
-    // ===== Global state =====
-    let currentMode = "nero";
-    let lastSelectedIndex = null;
-    const neroBtn = document.getElementById("btn-nero");
-    const iceBtn = document.getElementById("btn-ice");
-    const histBtn = document.getElementById("btn-hist");
-    const imgTag = document.getElementById('diagnostic-img');
+    // ===== Handle Aggregate NERO dropdown =====
+    const labelSelect = document.getElementById("label-select");
+    const aggregateDiv = document.getElementById("aggregate-plot");
 
-    // ===== Helper to fetch and display a plot =====
-    function fetchPlot(index, mode) {
-      if (index === null) return;
-
-      imgTag.src = "";
-      imgTag.alt = `Generating ${mode.toUpperCase()} plot...`;
-
-      // Select correct backend route
-      let endpoint;
-      if (mode === "nero") endpoint = "get_nero";
-      else if (mode === "ice") endpoint = "get_ice";
-      else if (mode === "confidence_hist") endpoint = "get_confidence_hist";
-      else return console.error("Unknown mode:", mode);
-
-      // Fetch and render the image
-      fetch(`/${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ index: index })
-      })
-        .then(res => res.json())
-        .then(json => {
-          imgTag.src = "data:image/png;base64," + json.image;
-          imgTag.alt = `${mode.toUpperCase()} plot for Sample ${json.sample} (Label ${json.label})`;
-        })
-        .catch(err => {
-          console.error("Error fetching plot:", err);
-          imgTag.alt = "Error generating plot.";
-        });
-    }
-
-    // ===== Unified Button Toggle Handler =====
-    function setActiveButton(activeBtn) {
-      [neroBtn, iceBtn, histBtn].forEach(btn => btn.classList.remove("active"));
-      activeBtn.classList.add("active");
-    }
-
-    // NERO mode
-    neroBtn.onclick = () => {
-      currentMode = "nero";
-      setActiveButton(neroBtn);
-      if (lastSelectedIndex !== null) fetchPlot(lastSelectedIndex, "nero");
-    };
-
-    // ICE mode
-    iceBtn.onclick = () => {
-      currentMode = "ice";
-      setActiveButton(iceBtn);
-      if (lastSelectedIndex !== null) fetchPlot(lastSelectedIndex, "ice");
-    };
-
-    // Confidence histogram mode
-    histBtn.onclick = () => {
-      currentMode = "confidence_hist";
-      setActiveButton(histBtn);
-      if (lastSelectedIndex !== null) {
-        fetchPlot(lastSelectedIndex, "confidence_hist");
-      } else {
-        imgTag.alt = "Please select a sample point first.";
-      }
-    };
-
-
-    // ===== Click handler for PCA points =====
-    document.getElementById('pca').on('plotly_click', function(event) {
-      const idx = event.points[0].pointIndex;
-      lastSelectedIndex = idx;
-      fetchPlot(idx, currentMode);
+    // Build label list (A–Y excluding J, Z)
+    const letters = [];
+    for (let c = 65; c <= 90; c++) if (c !== 74 && c !== 90) letters.push(String.fromCharCode(c));
+    letters.forEach(l => {
+      const opt = document.createElement("option");
+      opt.value = l;
+      opt.textContent = l;
+      labelSelect.appendChild(opt);
     });
 
-    // ===== Auto-resize PCA plot with window =====
-    window.addEventListener('resize', () => {
-      Plotly.Plots.resize('pca');
+    function loadAggregate(label) {
+      aggregateDiv.innerHTML = "<p>Computing aggregate NERO...</p>";
+      fetch("/get_aggregate_nero", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label })
+      })
+      .then(res => res.json())
+      .then(json => {
+        if (!json.nero_plot) {
+          aggregateDiv.innerHTML = "<p>No data available.</p>";
+          return;
+        }
+        const fig = JSON.parse(json.nero_plot);
+        Plotly.newPlot("aggregate-plot", fig.data, fig.layout, {responsive: true, displaylogo: false});
+      })
+      .catch(err => {
+        console.error("Error fetching aggregate NERO:", err);
+        aggregateDiv.innerHTML = "<p>Error computing NERO.</p>";
+      });
+    }
+    loadAggregate("All");
+    labelSelect.addEventListener("change", e => loadAggregate(e.target.value));
+
+    // ===== Individual NERO + rotation =====
+    document.getElementById('pca').on('plotly_click', function(event) {
+      const idx = event.points[0].pointIndex;
+      const canvas = document.getElementById('original-canvas');
+      const ctx = canvas.getContext('2d');
+      const neroDiv = document.getElementById('nero-plot');
+      const slider = document.getElementById('angle-slider');
+      const angleValue = document.getElementById('angle-value');
+
+      neroDiv.innerHTML = "<p>Generating NERO plot...</p>";
+      slider.disabled = true;
+      angleValue.textContent = "Angle: ...";
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      fetch('/get_nero', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index: idx })
+      })
+      .then(res => res.json())
+      .then(json => {
+        const img = new Image();
+        img.src = "data:image/png;base64," + json.original_image;
+        img.onload = () => {
+          const drawRotated = angleDeg => {
+            const angleRad = angleDeg * Math.PI / 180;
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+            ctx.save();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.translate(cx, cy);
+            ctx.rotate(angleRad);
+            ctx.scale(scale, scale);
+            ctx.drawImage(img, -img.width / 2, -img.height / 2);
+            ctx.restore();
+          };
+          drawRotated(0);
+
+          const fig = JSON.parse(json.nero_plot);
+          Plotly.newPlot('nero-plot', fig.data, fig.layout, {responsive: true, displaylogo: false});
+
+          slider.disabled = false;
+          slider.value = 0;
+          angleValue.textContent = "Angle: 0°";
+          slider.oninput = function() {
+            const angle = parseFloat(this.value);
+            angleValue.textContent = `Angle: ${angle}°`;
+            Plotly.restyle('nero-plot', { 'r': [[0,1]], 'theta': [[angle,angle]] }, [1]);
+            drawRotated(angle);
+          };
+        };
+      })
+      .catch(err => {
+        console.error("Error fetching NERO data:", err);
+        neroDiv.innerHTML = "<p>Error generating NERO plot.</p>";
+      });
     });
   </script>
 </body>

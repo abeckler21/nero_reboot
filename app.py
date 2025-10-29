@@ -8,9 +8,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from nero_eval import evaluate_orbit, plot_individual_nero
-from io import BytesIO
-import base64
-import math
 
 
 app = Flask(__name__)
@@ -56,10 +53,13 @@ def index():
 
 @app.route("/get_nero", methods=["POST"])
 def get_nero():
-    """Compute NERO orbit and return a Matplotlib-styled image panel."""
+    """Compute NERO orbit and return original image + styled Plotly JSON for NERO plot."""
     import base64
     from io import BytesIO
     import matplotlib.pyplot as plt
+    import plotly.graph_objects as go
+    from plotly.utils import PlotlyJSONEncoder
+    import json
 
     i = int(request.json.get("index"))
     raw_label = int(sample_df.iloc[i]["label"])
@@ -75,178 +75,190 @@ def get_nero():
         label_map=label_map,
     )
 
-    # --- Create Matplotlib figure like in nero_eval.py ---
-    fig = plt.figure(figsize=(4.8, 6))
-    gs = fig.add_gridspec(2, 1, height_ratios=[0.75, 1.5])
-    ax_img = fig.add_subplot(gs[0])
-    ax_nero = fig.add_subplot(gs[1], projection="polar")
-
-    # Plot image
-    ax_img.imshow(image, cmap="gray")
-    ax_img.set_title(f"Sample {i} (Label {raw_label})", fontsize=10)
-    ax_img.axis("off")
-
-    # Use your exact NERO plotting function for the polar subplot
-    plot_individual_nero(losses, angles, title="NERO Plot (0–1 scale)", ax=ax_nero)
-
-    # Save to base64
+    # --- Encode original image ---
+    fig_img, ax = plt.subplots(figsize=(3, 3))
+    ax.imshow(image, cmap="gray")
+    ax.axis("off")
     buf = BytesIO()
-    plt.tight_layout()
-    plt.savefig(buf, format="png", bbox_inches="tight", dpi=150)
-    plt.close(fig)
+    fig_img.savefig(buf, format="png", bbox_inches="tight", dpi=150)
+    plt.close(fig_img)
     buf.seek(0)
-    img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+    image_b64 = base64.b64encode(buf.read()).decode("utf-8")
 
-    return jsonify({
-        "label": int(raw_label),
-        "sample": i,
-        "image": img_b64
-    })
+    # --- Create Plotly NERO polar plot ---
+    theta_deg = np.degrees(angles)
 
+    fig = go.Figure()
 
-@app.route("/get_ice", methods=["POST"])
-def get_ice():
-    """Compute ICE curves for selected features (pixels or channels)."""
-    import base64
-    from io import BytesIO
-    import matplotlib.pyplot as plt
+    # Main orbit (dark blue)
+    fig.add_trace(go.Scatterpolar(
+        r=losses,
+        theta=theta_deg,
+        mode='lines+markers',
+        line=dict(color='darkblue', width=2),
+        marker=dict(size=4, color='darkblue'),
+        name="NERO Orbit"
+    ))
 
-    i = int(request.json.get("index"))
-    raw_label = int(sample_df.iloc[i]["label"])
-    image = sample_df.drop("label", axis=1).iloc[i].values.reshape(28, 28, 1).astype("float32") / 255.0
+    # Green indicator line (initialized at 0°)
+    fig.add_trace(go.Scatterpolar(
+        r=[0, 1],
+        theta=[0, 0],
+        mode='lines',
+        line=dict(color='limegreen', width=3),
+        name="Rotation Angle",
+        hoverinfo='skip'
+    ))
 
-    # Choose a few pixels to vary (e.g., 4 corner pixels, 4 center pixels)
-    pixel_coords = [(7,7), (14,14), (7,20), (20,7)]
-    x_vals = np.linspace(0, 1, 20)
-    preds = {coord: [] for coord in pixel_coords}
-
-    for coord in pixel_coords:
-        img_mod = image.copy()
-        for val in x_vals:
-            img_mod[coord] = val
-            p = model.predict(img_mod[None, ...])[0][label_map[raw_label]]
-            preds[coord].append(p)
-
-    # --- Plot ICE curves ---
-    fig, ax = plt.subplots(figsize=(4.5, 3))
-    for coord, y in preds.items():
-        ax.plot(x_vals, y, label=f"pixel {coord}")
-    ax.set_xlabel("Pixel Intensity")
-    ax.set_ylabel(f"Predicted P(class={raw_label})")
-    ax.legend(fontsize=6)
-    ax.set_title("ICE curves for selected pixels")
-
-    buf = BytesIO()
-    plt.tight_layout()
-    plt.savefig(buf, format="png", bbox_inches="tight", dpi=130)
-    plt.close(fig)
-    buf.seek(0)
-    img_b64 = base64.b64encode(buf.read()).decode("utf-8")
-
-    return jsonify({
-        "label": int(raw_label),
-        "sample": i,
-        "image": img_b64
-    })
-
-
-@app.route("/get_pca_dim", methods=["POST"])
-def get_pca_dim():
-    """Recompute PCA and return coordinates using PC1 vs selected PCN."""
-    dims = int(request.json.get("dims", 2))
-    if dims < 2:
-        dims = 2
-
-    print(f"[Recompute] Updating PCA projection: PC1 vs PC{dims}")
-
-    images = test_df.drop("label", axis=1).values.reshape(-1, 28, 28).astype("float32") / 255.0
-    feats = [model.predict(img[None, ..., None], verbose=0).flatten() for img in images]
-    coords = PCA(n_components=max(dims, 2)).fit_transform(np.array(feats))
-
-    # Use PC1 (x-axis) and PC_N (y-axis)
-    reduced = np.column_stack((coords[:, 0], coords[:, dims - 1]))
-    labels = test_df["label"].astype(int).tolist()
-
-    data = [
-        {"x": float(reduced[i, 0]), "y": float(reduced[i, 1]),
-         "label": labels[i], "idx": i}
-        for i in range(len(test_df))
-    ]
-    return jsonify(data)
-
-
-@app.route("/get_confidence_hist", methods=["POST"])
-def get_confidence_hist():
-    """Generate histogram of predicted confidences across all labels for the selected image."""
-    idx = int(request.json.get("index", 0))
-    row = test_df.iloc[idx]
-    label = int(row["label"])
-    image = row.drop("label").values.reshape(28, 28).astype("float32") / 255.0
-
-    x = image[None, ..., None]
-    probs = model.predict(x, verbose=0)[0]
-    n_classes = len(probs)
-
-    # --- Auto-determine number of rows based on class count ---
-    if n_classes <= 13:
-        n_rows = 1
-    elif n_classes <= 26:
-        n_rows = 2
-    elif n_classes <= 39:
-        n_rows = 3
-    else:
-        n_rows = 4
-
-    per_row = math.ceil(n_classes / n_rows)
-    fig, axs = plt.subplots(n_rows, 1, figsize=(6, 2.5 * n_rows), sharey=True)
-
-    if n_rows == 1:
-        axs = [axs]  # make iterable for single-row case
-
-    # --- Plot each row ---
-    for i in range(n_rows):
-        start = i * per_row
-        end = min(start + per_row, n_classes)
-        row_probs = probs[start:end]
-        bars = axs[i].bar(range(len(row_probs)), row_probs, color="steelblue", edgecolor="black")
-
-        # Highlight true label if in this range
-        if start <= label < end:
-            bars[label - start].set_color("orange")
-
-        # Add probability text above bars
-        for p in bars:
-            axs[i].text(
-                p.get_x() + p.get_width() / 2,
-                p.get_height() + 0.02,
-                f"{p.get_height():.2f}",
-                ha="center",
-                va="bottom",
-                fontsize=8,
+    # --- Layout styling ---
+    fig.update_layout(
+        title=f"NERO Orbit (Sample {i}, Label {raw_label})",
+        polar=dict(
+            bgcolor='white',
+            radialaxis=dict(
+                range=[0, 1],
+                showline=True,
+                gridcolor='black',
+                linecolor='black',
+                tickfont=dict(color='black')
+            ),
+            angularaxis=dict(
+                gridcolor='black',
+                linecolor='black',
+                tickfont=dict(color='black')
             )
+        ),
+        paper_bgcolor='white',
+        plot_bgcolor='white',
+        showlegend=False,
+        margin=dict(l=40, r=40, t=60, b=40)
+    )
 
-        axs[i].set_ylim(0, 1.1)
-        axs[i].set_ylabel("Prob.", fontsize=9)
-        axs[i].set_xticks(range(len(row_probs)))
-        axs[i].set_xticklabels([str(x) for x in range(start, end)], fontsize=8)
+    nero_json = json.dumps(fig, cls=PlotlyJSONEncoder)
 
-        if i == 0:
-            axs[i].set_title(f"Confidence Histogram — Sample {idx} (True label: {label})", fontsize=11)
-        if i == n_rows - 1:
-            axs[i].set_xlabel("Class Label", fontsize=9)
+    return jsonify({
+        "label": int(raw_label),
+        "sample": i,
+        "original_image": image_b64,
+        "nero_plot": nero_json
+    })
 
-    plt.tight_layout()
 
-    # --- Convert to base64 for the frontend ---
-    buf = BytesIO()
-    plt.savefig(buf, format="png", bbox_inches="tight", dpi=130)
-    plt.close(fig)
-    buf.seek(0)
-    img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+@app.route("/get_aggregate_nero", methods=["POST"])
+def get_aggregate_nero():
+    """
+    Compute aggregate NERO curves for a given label or across all samples.
+    Returns average losses vs rotation angle as Plotly JSON.
+    """
+    import plotly.graph_objects as go
+    from plotly.utils import PlotlyJSONEncoder
+    import json
+    import numpy as np
 
-    return jsonify({"label": label, "sample": idx, "image": img_b64})
+    selected_label = request.json.get("label")
+    print(f"Computing aggregate NERO for: {selected_label}")
 
+    # Build label list (A–Y, excluding J and Z)
+    letters = [chr(c) for c in range(ord("A"), ord("Z") + 1) if c not in (ord("J"), ord("Z"))]
+    valid_labels = [i if i < 9 else i + 1 for i in range(len(letters))]  # skip label 9
+    label_map_inv = dict(zip(letters, valid_labels))
+
+    # Determine subset
+    if selected_label == "All":
+        subset_df = sample_df
+    else:
+        label_num = label_map_inv[selected_label]
+        subset_df = sample_df[sample_df["label"] == label_num]
+
+    print(f"Subset size: {len(subset_df)}")
+
+    # Skip if empty
+    if len(subset_df) == 0:
+        return jsonify({"nero_plot": None, "label": selected_label})
+
+    # Parameters
+    num_steps = 72
+    group = "rotation"
+
+    all_losses = []
+    base_angles = None
+
+    # Iterate over subset (limit to keep compute manageable)
+    max_samples = min(len(subset_df), 50)
+    print(f"Computing using {max_samples} samples...")
+
+    for _, row in subset_df.sample(max_samples, random_state=42).iterrows():
+        image = row.drop("label").values.reshape(28, 28)
+        raw_label = int(row["label"])
+
+        try:
+            losses, angles = evaluate_orbit(
+                model,
+                image,
+                label_raw=raw_label,
+                group=group,
+                num_steps=num_steps,
+                label_map=label_map,
+            )
+        except Exception as e:
+            print(f"Error computing NERO for sample: {e}")
+            continue
+
+        losses = np.array(losses, dtype=np.float32)
+        if np.any(np.isnan(losses)):
+            continue
+        all_losses.append(losses)
+
+        if base_angles is None:
+            base_angles = np.array(angles, dtype=np.float32)
+
+    if len(all_losses) == 0:
+        print("No valid NERO curves.")
+        return jsonify({"nero_plot": None, "label": selected_label})
+
+    # Compute mean losses (and optionally convert to "confidence")
+    mean_losses = np.mean(np.stack(all_losses), axis=0)
+    mean_losses = np.clip(mean_losses, 0, 1)
+
+    angles_deg = np.degrees(base_angles)
+
+    # --- Build Plotly figure ---
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatterpolar(
+        r=mean_losses,
+        theta=angles_deg,
+        mode="lines+markers",
+        line=dict(color="darkblue", width=2),
+        marker=dict(size=4, color="darkblue"),
+        name=f"Aggregate NERO ({selected_label})"
+    ))
+
+    fig.update_layout(
+        title=f"Aggregate NERO – {selected_label}",
+        polar=dict(
+            bgcolor="white",
+            radialaxis=dict(
+                range=[0, 1],
+                showline=True,
+                gridcolor="black",
+                linecolor="black",
+                tickfont=dict(color="black")
+            ),
+            angularaxis=dict(
+                gridcolor="black",
+                linecolor="black",
+                tickfont=dict(color="black")
+            )
+        ),
+        paper_bgcolor="white",
+        showlegend=False,
+        margin=dict(l=40, r=40, t=60, b=40)
+    )
+
+    nero_json = json.dumps(fig, cls=PlotlyJSONEncoder)
+    return jsonify({"nero_plot": nero_json, "label": selected_label})
 
 
 if __name__ == "__main__":
-    app.run(debug=True, use_reloader=False)
+    app.run(debug=True)
