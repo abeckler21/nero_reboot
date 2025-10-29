@@ -269,44 +269,24 @@ def get_aggregate_nero():
     mean_conf = np.mean(all_conf, axis=0)
     theta_deg = np.linspace(0, 360, num_steps, endpoint=False)
 
-    
-    # --- Debug: create a simple Matplotlib polar plot ---
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import base64
-    from io import BytesIO
+    # --- Debug print ---
+    print("\n--- Mean aggregate points (used for plot) ---")
+    for a, r in zip(theta_deg, mean_conf):
+        print(f"{a:7.2f}° → {r:.4f}")
+    print("---------------------------------------------------\n")
+    mean_conf = mean_conf.astype(np.float64)
+    theta_deg = theta_deg.astype(np.float64)
 
-    # Convert degrees → radians for Matplotlib
-    theta_rad = np.radians(theta_deg)
+    # call the func?
+    fig = plot_nero(
+        r=mean_conf,
+        theta_deg=theta_deg,
+        title=f"Aggregate NERO - {selected_label}",
+        include_indicator=False
+    )
 
-    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=(5, 5))
-
-    # Plot the orbit
-    ax.plot(theta_rad, mean_conf, color='darkblue', linewidth=2, marker='o', markersize=3, label='Mean Confidence')
-
-    # Fill under the curve for visibility
-    ax.fill(theta_rad, mean_conf, color='steelblue', alpha=0.3)
-
-    # Formatting
-    ax.set_title(f"Aggregate NERO – {selected_label}", va='bottom')
-    ax.set_rmax(1.0)
-    ax.set_rticks([0.2, 0.4, 0.6, 0.8, 1.0])
-    ax.set_rlabel_position(-22.5)
-    ax.grid(True)
-
-    # Convert figure to base64 string for JSON return
-    buf = BytesIO()
-    plt.tight_layout()
-    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    buf.seek(0)
-    img_b64 = base64.b64encode(buf.read()).decode("utf-8")
-
-    # --- Return to frontend ---
-    return jsonify({
-    "nero_plot": img_b64,
-    "label": selected_label
-    })
+    nero_json = json.dumps(fig, cls=PlotlyJSONEncoder)
+    return jsonify({"nero_plot": nero_json, "label": selected_label})
 
 
 
