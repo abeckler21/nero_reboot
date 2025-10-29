@@ -6,6 +6,21 @@ from sklearn.decomposition import PCA
 from matplotlib.widgets import Button
 import pandas as pd
 
+
+def label_to_letter(label: int) -> str:
+    """
+    Convert SignMNIST label (0-23) to its corresponding letter (A-Y, skipping J and Z).
+    """
+    # Letters A-Z, excluding J (9) and Z (25)
+    letters = [chr(c) for c in range(ord('A'), ord('Z') + 1) if c not in (ord('J'), ord('Z'))]
+    
+    if 0 <= label < len(letters):
+        return letters[label]
+    else:
+        raise ValueError(f"Label {label} out of valid range (0-{len(letters)-1})")
+
+
+
 # =====================================================
 #  ORBIT GENERATION (new helper function)
 # =====================================================
@@ -126,138 +141,100 @@ def evaluate_orbit(
     return losses, group_elements
 
 
-# === Aggregate NERO computation ===
-def evaluate_aggregate_orbit(model, test_df, label_map, group="rotation", num_steps=360, n_samples=50):
-    """Compute aggregate NERO curve across multiple samples."""
-    all_confidences = []
-
-    for i in range(n_samples):
-        raw_label = int(test_df.iloc[i]["label"])
-        image = test_df.drop("label", axis=1).iloc[i].values.reshape(28, 28)
-
-        losses, angles = evaluate_orbit(
-            model,
-            image,
-            label_raw=raw_label,
-            group=group,
-            num_steps=num_steps,
-            label_map=label_map,
-        )
-        all_confidences.append(losses)
-
-    all_confidences = np.array(all_confidences)  # shape (n_samples, num_steps)
-    mean_conf = np.mean(all_confidences, axis=0)
-    std_conf = np.std(all_confidences, axis=0)
-    return angles, mean_conf, std_conf
 
 
-# =====================================================
-#  VISUALIZATION: CIRCULAR NERO PLOT
-# =====================================================
-def plot_individual_nero(losses, group_elements, title="NERO Plot (0–1 scale)", ax=None):
+def plot_nero(r, theta_deg, title=None, include_indicator=False, label=None, sample_idx=None):
+    """Return a Plotly figure object for a NERO polar plot.
+
+    Args:
+        r (array-like): Radial values (confidences/losses).
+        theta_deg (array-like): Angles in degrees (same length as r).
+        title (str, optional): Figure title.
+        include_indicator (bool): If True, adds the green 0° indicator line.
+        label (int, optional): Label/class index (for title).
+        sample_idx (int, optional): Sample index (for title).
+
+    Returns:
+        plotly.graph_objects.Figure
     """
-    Plot a NERO polar diagram with:
-    - 0° = right (East), 90° = top, 180° = left, 270° = bottom
-    - radius fixed from 0–1
-    - horizontal (0°) radial tick labels
-    Works standalone or inside a composite figure when an existing ax is passed.
-    """
-    # Convert degrees → radians
-    if isinstance(group_elements[0], (int, float)):
-        angles = np.deg2rad(group_elements)
-    else:
-        angles = np.linspace(0, 2 * np.pi, len(losses))
+    import plotly.graph_objects as go
+    print("\n=== DEBUG: plot_nero() data summary ===")
 
-    values = np.array(losses)
+    def summarize(name, arr):
+        arr = np.array(arr)
+        print(f"{name}:")
+        print(f"  type:        {type(arr)}")
+        print(f"  dtype:       {arr.dtype}")
+        print(f"  ndim:        {arr.ndim}")
+        print(f"  shape:       {arr.shape}")
+        print(f"  size:        {arr.size}")
+        print(f"  min, max:    {arr.min() if arr.size > 0 else 'N/A'}, {arr.max() if arr.size > 0 else 'N/A'}")
+        print(f"  has NaNs?    {np.isnan(arr).any()}")
+        if arr.size > 0:
+            print(f"  first 5:     {np.round(arr[:5], 4)}")
+            print(f"  last 5:      {np.round(arr[-5:], 4)}")
+        print("-" * 50)
 
-    # --- Create subplot if not provided ---
-    created_fig = False
-    if ax is None:
-        fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=(5, 5))
-        created_fig = True
+    summarize("r", r)
+    summarize("theta_deg", theta_deg)
 
-    # --- Plot confidence curve ---
-    ax.plot(angles, values, linewidth=2, color="royalblue")
+    # Create figure
+    fig = go.Figure()
 
-    # --- Fix radius to [0, 1] ---
-    ax.set_ylim(0, 1)
-    ax.set_rticks(np.linspace(0, 1, 6))
-    ax.set_yticklabels([f"{v:.1f}" for v in np.linspace(0, 1, 6)])
+    # Main orbit (dark blue)
+    fig.add_trace(go.Scatterpolar(
+        r=r,
+        theta=theta_deg,
+        mode="lines+markers",
+        line=dict(color="darkblue", width=2),
+        marker=dict(size=4, color="darkblue"),
+        name="NERO Orbit",
+    ))
 
-    # --- Set orientation ---
-    ax.set_theta_zero_location("E")   # 0° on the right
-    ax.set_theta_direction(1)         # counterclockwise rotation
-    ax.set_rlabel_position(0)         # labels along horizontal (0°)
+    # Optional rotation indicator
+    if include_indicator:
+        fig.add_trace(go.Scatterpolar(
+            r=[0, 1],
+            theta=[0, 0],
+            mode="lines",
+            line=dict(color="limegreen", width=3),
+            name="Rotation Angle",
+            hoverinfo="skip",
+        ))
 
-    # --- Aesthetic tweaks ---
-    ax.set_title(title, va="bottom")
+    # Construct title if not provided
+    if title is None:
+        if sample_idx is not None and label is not None:
+            title = f"NERO Orbit (Sample {sample_idx}, Label {label}: {label_to_letter(label)})"
+        else:
+            title = "NERO Orbit"
 
-    if created_fig:
-        plt.tight_layout()
-        plt.show()
-
-    return ax
-
-
-def plot_pca_with_nero_panel(model, coords, images, raw_labels, label_map,
-                             group="rotation", num_steps=72,
-                             nero_plot_func=None):
-    """
-    Interactive PCA (left) + live NERO plot (right).
-    Clicking a point recomputes its orbit and calls `nero_plot_func`
-    (your plot_individual_nero/plot_nero) to render it on the right axis.
-    """
-    if nero_plot_func is None:
-        raise ValueError("Please pass nero_plot_func=plot_nero or plot_individual_nero.")
-
-    # --- figure layout ---
-    fig = plt.figure(figsize=(12, 6))
-    gs = fig.add_gridspec(1, 2, width_ratios=[2, 1])
-    ax_pca = fig.add_subplot(gs[0, 0])
-    ax_nero = fig.add_subplot(gs[0, 1], projection="polar")
-
-    # --- PCA scatter ---
-    sc = ax_pca.scatter(coords[:, 0], coords[:, 1], c=raw_labels,
-                        cmap="tab20", s=25, alpha=0.8)
-    plt.colorbar(sc, ax=ax_pca, label="Raw label index")
-    ax_pca.set_title("Feature PCA (click to view NERO)")
-
-    # --- Empty placeholder for NERO plot ---
-    ax_nero.set_title("NERO plot", va="bottom")
-    ax_nero.set_ylim(0, 1)
-    ax_nero.set_theta_zero_location("E")
-    ax_nero.set_theta_direction(1)
-
-    # --- click handler ---
-    def on_click(event):
-        if event.inaxes != ax_pca:
-            return
-        x, y = event.xdata, event.ydata
-        dists = np.hypot(coords[:, 0] - x, coords[:, 1] - y)
-        idx = np.argmin(dists)
-        image = images[idx][:, :, 0] * 255.0
-        raw_label = raw_labels[idx]
-        print(f"\n→ Selected index {idx}, label {raw_label}")
-
-        # Compute orbit
-        losses, angles = evaluate_orbit(
-            model,
-            image,
-            label_raw=raw_label,
-            group=group,
-            num_steps=num_steps,
-            label_map=label_map,
-        )
-
-        # --- clear old NERO plot and re-draw using your function ---
-        ax_nero.clear()
-        nero_plot_func(losses, angles, title=f"NERO for label {raw_label}", ax=ax_nero)
-
-        fig.canvas.draw_idle()
-
-    fig.canvas.mpl_connect("button_press_event", on_click)
-    plt.tight_layout()
-    plt.show()
+    # Layout styling
+    fig.update_layout(
+        title=title,
+        polar=dict(
+            bgcolor="white",
+            radialaxis=dict(
+                range=[0, 1],
+                showline=True,
+                gridcolor="black",
+                linecolor="black",
+                tickfont=dict(color="black"),
+            ),
+            angularaxis=dict(
+                rotation=0,  # 0° = East
+                direction="clockwise",
+                gridcolor="black",
+                linecolor="black",
+                tickfont=dict(color="black"),
+            ),
+        ),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        showlegend=False,
+        margin=dict(l=40, r=40, t=60, b=40),
+    )
+    return fig
 
 
 # =====================================================
