@@ -42,9 +42,12 @@
       text-align: center;
     }
 
+    /* ✅ give plotly containers explicit height */
     #aggregate-plot, #nero-plot, #pca {
       flex: 1;
       width: 100%;
+      height: 500px;
+      min-height: 400px;
     }
 
     #angle-slider {
@@ -92,6 +95,13 @@
         height: 80vh;
       }
     }
+
+    /* ✅ loading message styling */
+    #loading-msg {
+      text-align: center;
+      color: #666;
+      margin-top: 8px;
+    }
   </style>
 </head>
 
@@ -103,6 +113,7 @@
       <option value="All">All</option>
     </select>
     <div id="aggregate-plot"></div>
+    <p id="loading-msg" style="display:none;">Computing aggregate NERO...</p>
   </div>
 
   <!-- 2️⃣ Middle: Individual NERO -->
@@ -179,6 +190,7 @@
     // ===== Handle Aggregate NERO dropdown =====
     const labelSelect = document.getElementById("label-select");
     const aggregateDiv = document.getElementById("aggregate-plot");
+    const loadingMsg = document.getElementById("loading-msg");
 
     // Build label list (A–Y excluding J, Z)
     const letters = [];
@@ -190,8 +202,12 @@
       labelSelect.appendChild(opt);
     });
 
+    // ✅ fixed version: don't overwrite aggregate-plot div
     function loadAggregate(label) {
-      aggregateDiv.innerHTML = "<p>Computing aggregate NERO...</p>";
+      loadingMsg.style.display = "block";
+      aggregateDiv.innerHTML = "";
+      console.log("Requesting aggregate NERO for:", label);
+
       fetch("/get_aggregate_nero", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -199,18 +215,22 @@
       })
       .then(res => res.json())
       .then(json => {
+        loadingMsg.style.display = "none";
         if (!json.nero_plot) {
           aggregateDiv.innerHTML = "<p>No data available.</p>";
           return;
         }
         const fig = JSON.parse(json.nero_plot);
+        console.log("Loaded aggregate NERO plot:", fig);
         Plotly.newPlot("aggregate-plot", fig.data, fig.layout, {responsive: true, displaylogo: false});
       })
       .catch(err => {
         console.error("Error fetching aggregate NERO:", err);
+        loadingMsg.style.display = "none";
         aggregateDiv.innerHTML = "<p>Error computing NERO.</p>";
       });
     }
+
     loadAggregate("All");
     labelSelect.addEventListener("change", e => loadAggregate(e.target.value));
 

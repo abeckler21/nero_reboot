@@ -9,7 +9,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from nero_eval import evaluate_orbit, plot_individual_nero
 
-
 app = Flask(__name__)
 
 # --- Load model and data once ---
@@ -51,6 +50,102 @@ def index():
     ]
     return render_template("index.html", data=json.dumps(data))
 
+
+def plot_nero(r, theta_deg, title=None, include_indicator=False, label=None, sample_idx=None):
+    """Return a Plotly figure object for a NERO polar plot.
+
+    Args:
+        r (array-like): Radial values (confidences/losses).
+        theta_deg (array-like): Angles in degrees (same length as r).
+        title (str, optional): Figure title.
+        include_indicator (bool): If True, adds the green 0° indicator line.
+        label (int, optional): Label/class index (for title).
+        sample_idx (int, optional): Sample index (for title).
+
+    Returns:
+        plotly.graph_objects.Figure
+    """
+    import plotly.graph_objects as go
+    print("\n=== DEBUG: plot_nero() data summary ===")
+
+    def summarize(name, arr):
+        arr = np.array(arr)
+        print(f"{name}:")
+        print(f"  type:        {type(arr)}")
+        print(f"  dtype:       {arr.dtype}")
+        print(f"  ndim:        {arr.ndim}")
+        print(f"  shape:       {arr.shape}")
+        print(f"  size:        {arr.size}")
+        print(f"  min, max:    {arr.min() if arr.size > 0 else 'N/A'}, {arr.max() if arr.size > 0 else 'N/A'}")
+        print(f"  has NaNs?    {np.isnan(arr).any()}")
+        if arr.size > 0:
+            print(f"  first 5:     {np.round(arr[:5], 4)}")
+            print(f"  last 5:      {np.round(arr[-5:], 4)}")
+        print("-" * 50)
+
+    summarize("r", r)
+    summarize("theta_deg", theta_deg)
+
+    # Create figure
+    fig = go.Figure()
+
+    # Main orbit (dark blue)
+    fig.add_trace(go.Scatterpolar(
+        r=r,
+        theta=theta_deg,
+        mode="lines+markers",
+        line=dict(color="darkblue", width=2),
+        marker=dict(size=4, color="darkblue"),
+        name="NERO Orbit",
+    ))
+
+    # Optional rotation indicator
+    if include_indicator:
+        fig.add_trace(go.Scatterpolar(
+            r=[0, 1],
+            theta=[0, 0],
+            mode="lines",
+            line=dict(color="limegreen", width=3),
+            name="Rotation Angle",
+            hoverinfo="skip",
+        ))
+
+    # Construct title if not provided
+    if title is None:
+        if sample_idx is not None and label is not None:
+            title = f"NERO Orbit (Sample {sample_idx}, Label {label})"
+        else:
+            title = "NERO Orbit"
+
+    # Layout styling
+    fig.update_layout(
+        title=title,
+        polar=dict(
+            bgcolor="white",
+            radialaxis=dict(
+                range=[0, 1],
+                showline=True,
+                gridcolor="black",
+                linecolor="black",
+                tickfont=dict(color="black"),
+            ),
+            angularaxis=dict(
+                rotation=0,  # 0° = East
+                direction="clockwise",
+                gridcolor="black",
+                linecolor="black",
+                tickfont=dict(color="black"),
+            ),
+        ),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        showlegend=False,
+        margin=dict(l=40, r=40, t=60, b=40),
+    )
+    return fig
+
+
+
 @app.route("/get_nero", methods=["POST"])
 def get_nero():
     """Compute NERO orbit and return original image + styled Plotly JSON for NERO plot."""
@@ -88,50 +183,12 @@ def get_nero():
     # --- Create Plotly NERO polar plot ---
     theta_deg = np.degrees(angles)
 
-    fig = go.Figure()
-
-    # Main orbit (dark blue)
-    fig.add_trace(go.Scatterpolar(
+    fig = plot_nero(
         r=losses,
-        theta=theta_deg,
-        mode='lines+markers',
-        line=dict(color='darkblue', width=2),
-        marker=dict(size=4, color='darkblue'),
-        name="NERO Orbit"
-    ))
-
-    # Green indicator line (initialized at 0°)
-    fig.add_trace(go.Scatterpolar(
-        r=[0, 1],
-        theta=[0, 0],
-        mode='lines',
-        line=dict(color='limegreen', width=3),
-        name="Rotation Angle",
-        hoverinfo='skip'
-    ))
-
-    # --- Layout styling ---
-    fig.update_layout(
-        title=f"NERO Orbit (Sample {i}, Label {raw_label})",
-        polar=dict(
-            bgcolor='white',
-            radialaxis=dict(
-                range=[0, 1],
-                showline=True,
-                gridcolor='black',
-                linecolor='black',
-                tickfont=dict(color='black')
-            ),
-            angularaxis=dict(
-                gridcolor='black',
-                linecolor='black',
-                tickfont=dict(color='black')
-            )
-        ),
-        paper_bgcolor='white',
-        plot_bgcolor='white',
-        showlegend=False,
-        margin=dict(l=40, r=40, t=60, b=40)
+        theta_deg=theta_deg,
+        label=raw_label,
+        sample_idx=i,
+        include_indicator=True
     )
 
     nero_json = json.dumps(fig, cls=PlotlyJSONEncoder)
@@ -144,55 +201,50 @@ def get_nero():
     })
 
 
+
 @app.route("/get_aggregate_nero", methods=["POST"])
 def get_aggregate_nero():
     """
-    Compute aggregate NERO curves for a given label or across all samples.
-    Returns average losses vs rotation angle as Plotly JSON.
+    Compute an aggregate NERO confidence orbit and plot as a histogram
+    (confidence vs rotation angle).
     """
     import plotly.graph_objects as go
     from plotly.utils import PlotlyJSONEncoder
-    import json
-    import numpy as np
+    import numpy as np, json
 
     selected_label = request.json.get("label")
-    print(f"Computing aggregate NERO for: {selected_label}")
+    print(f"\n=== Aggregate NERO for: {selected_label} ===")
 
-    # Build label list (A–Y, excluding J and Z)
+    # --- Build label mapping (A–Y, excluding J and Z) ---
     letters = [chr(c) for c in range(ord("A"), ord("Z") + 1) if c not in (ord("J"), ord("Z"))]
-    valid_labels = [i if i < 9 else i + 1 for i in range(len(letters))]  # skip label 9
+    valid_labels = [i if i < 9 else i + 1 for i in range(len(letters))]
     label_map_inv = dict(zip(letters, valid_labels))
 
-    # Determine subset
+    # --- Select subset ---
     if selected_label == "All":
         subset_df = sample_df
     else:
         label_num = label_map_inv[selected_label]
         subset_df = sample_df[sample_df["label"] == label_num]
 
-    print(f"Subset size: {len(subset_df)}")
-
-    # Skip if empty
-    if len(subset_df) == 0:
+    n_samples = len(subset_df)
+    print(f"Subset size: {n_samples}")
+    if n_samples == 0:
         return jsonify({"nero_plot": None, "label": selected_label})
 
-    # Parameters
     num_steps = 72
     group = "rotation"
+    max_samples = min(n_samples, 50)
+    all_conf = []
 
-    all_losses = []
-    base_angles = None
+    print(f"Using {max_samples} samples...")
 
-    # Iterate over subset (limit to keep compute manageable)
-    max_samples = min(len(subset_df), 50)
-    print(f"Computing using {max_samples} samples...")
-
+    # --- Collect individual orbits ---
     for _, row in subset_df.sample(max_samples, random_state=42).iterrows():
         image = row.drop("label").values.reshape(28, 28)
         raw_label = int(row["label"])
-
         try:
-            losses, angles = evaluate_orbit(
+            confidences, angles = evaluate_orbit(
                 model,
                 image,
                 label_raw=raw_label,
@@ -200,64 +252,63 @@ def get_aggregate_nero():
                 num_steps=num_steps,
                 label_map=label_map,
             )
+            confidences = np.array(confidences, dtype=np.float32)
+            if len(confidences) != num_steps or np.isnan(confidences).any():
+                continue
+            all_conf.append(confidences)
         except Exception as e:
-            print(f"Error computing NERO for sample: {e}")
+            print(f"Error computing NERO: {e}")
             continue
 
-        losses = np.array(losses, dtype=np.float32)
-        if np.any(np.isnan(losses)):
-            continue
-        all_losses.append(losses)
-
-        if base_angles is None:
-            base_angles = np.array(angles, dtype=np.float32)
-
-    if len(all_losses) == 0:
-        print("No valid NERO curves.")
+    if not all_conf:
+        print("No valid NERO curves found.")
         return jsonify({"nero_plot": None, "label": selected_label})
 
-    # Compute mean losses (and optionally convert to "confidence")
-    mean_losses = np.mean(np.stack(all_losses), axis=0)
-    mean_losses = np.clip(mean_losses, 0, 1)
+    # --- Compute mean orbit and define angle grid ---
+    all_conf = np.stack(all_conf)
+    mean_conf = np.mean(all_conf, axis=0)
+    theta_deg = np.linspace(0, 360, num_steps, endpoint=False)
 
-    angles_deg = np.degrees(base_angles)
+    
+    # --- Debug: create a simple Matplotlib polar plot ---
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import base64
+    from io import BytesIO
 
-    # --- Build Plotly figure ---
-    fig = go.Figure()
+    # Convert degrees → radians for Matplotlib
+    theta_rad = np.radians(theta_deg)
 
-    fig.add_trace(go.Scatterpolar(
-        r=mean_losses,
-        theta=angles_deg,
-        mode="lines+markers",
-        line=dict(color="darkblue", width=2),
-        marker=dict(size=4, color="darkblue"),
-        name=f"Aggregate NERO ({selected_label})"
-    ))
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=(5, 5))
 
-    fig.update_layout(
-        title=f"Aggregate NERO – {selected_label}",
-        polar=dict(
-            bgcolor="white",
-            radialaxis=dict(
-                range=[0, 1],
-                showline=True,
-                gridcolor="black",
-                linecolor="black",
-                tickfont=dict(color="black")
-            ),
-            angularaxis=dict(
-                gridcolor="black",
-                linecolor="black",
-                tickfont=dict(color="black")
-            )
-        ),
-        paper_bgcolor="white",
-        showlegend=False,
-        margin=dict(l=40, r=40, t=60, b=40)
-    )
+    # Plot the orbit
+    ax.plot(theta_rad, mean_conf, color='darkblue', linewidth=2, marker='o', markersize=3, label='Mean Confidence')
 
-    nero_json = json.dumps(fig, cls=PlotlyJSONEncoder)
-    return jsonify({"nero_plot": nero_json, "label": selected_label})
+    # Fill under the curve for visibility
+    ax.fill(theta_rad, mean_conf, color='steelblue', alpha=0.3)
+
+    # Formatting
+    ax.set_title(f"Aggregate NERO – {selected_label}", va='bottom')
+    ax.set_rmax(1.0)
+    ax.set_rticks([0.2, 0.4, 0.6, 0.8, 1.0])
+    ax.set_rlabel_position(-22.5)
+    ax.grid(True)
+
+    # Convert figure to base64 string for JSON return
+    buf = BytesIO()
+    plt.tight_layout()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+
+    # --- Return to frontend ---
+    return jsonify({
+    "nero_plot": img_b64,
+    "label": selected_label
+    })
+
+
 
 
 if __name__ == "__main__":
