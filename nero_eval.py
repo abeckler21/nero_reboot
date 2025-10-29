@@ -5,6 +5,7 @@ from tensorflow import keras
 from sklearn.decomposition import PCA
 from matplotlib.widgets import Button
 import pandas as pd
+import plotly.graph_objects as go
 
 
 def label_to_letter(label: int) -> str:
@@ -157,27 +158,6 @@ def plot_nero(r, theta_deg, title=None, include_indicator=False, label=None, sam
     Returns:
         plotly.graph_objects.Figure
     """
-    import plotly.graph_objects as go
-    print("\n=== DEBUG: plot_nero() data summary ===")
-
-    def summarize(name, arr):
-        arr = np.array(arr)
-        print(f"{name}:")
-        print(f"  type:        {type(arr)}")
-        print(f"  dtype:       {arr.dtype}")
-        print(f"  ndim:        {arr.ndim}")
-        print(f"  shape:       {arr.shape}")
-        print(f"  size:        {arr.size}")
-        print(f"  min, max:    {arr.min() if arr.size > 0 else 'N/A'}, {arr.max() if arr.size > 0 else 'N/A'}")
-        print(f"  has NaNs?    {np.isnan(arr).any()}")
-        if arr.size > 0:
-            print(f"  first 5:     {np.round(arr[:5], 4)}")
-            print(f"  last 5:      {np.round(arr[-5:], 4)}")
-        print("-" * 50)
-
-    summarize("r", r)
-    summarize("theta_deg", theta_deg)
-
     # Create figure
     fig = go.Figure()
 
