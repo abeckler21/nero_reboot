@@ -203,7 +203,7 @@ def plot_nero(r, theta_deg, title=None, include_indicator=False, label=None, sam
             ),
             angularaxis=dict(
                 rotation=0,  # 0° = East
-                direction="clockwise",
+                direction="counterclockwise",
                 gridcolor="black",
                 linecolor="black",
                 tickfont=dict(color="black"),
