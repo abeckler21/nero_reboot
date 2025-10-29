@@ -269,13 +269,20 @@ def get_aggregate_nero():
     mean_conf = np.mean(all_conf, axis=0)
     theta_deg = np.linspace(0, 360, num_steps, endpoint=False)
 
+    # --- Sanitize arrays ---
+    mean_conf = np.nan_to_num(mean_conf, nan=0.0, posinf=0.0, neginf=0.0)
+    theta_deg = np.nan_to_num(theta_deg, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # --- Convert to Python lists *after* cleaning ---
+    mean_conf = mean_conf.tolist()
+    theta_deg = theta_deg.tolist()
+    print(type(mean_conf[0]), type(theta_deg[0]))
+
     # --- Debug print ---
     print("\n--- Mean aggregate points (used for plot) ---")
     for a, r in zip(theta_deg, mean_conf):
         print(f"{a:7.2f}° → {r:.4f}")
     print("---------------------------------------------------\n")
-    mean_conf = mean_conf.astype(np.float64)
-    theta_deg = theta_deg.astype(np.float64)
 
     # call the func?
     fig = plot_nero(
