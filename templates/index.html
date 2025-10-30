@@ -96,7 +96,7 @@
       }
     }
 
-    /*  loading message styling */
+    /* loading message styling */
     #loading-msg {
       text-align: center;
       color: #666;
@@ -106,7 +106,7 @@
 </head>
 
 <body>
-  <!-- 1️⃣ Left: Aggregate NERO -->
+  <!-- 1 Left: Aggregate NERO -->
   <div class="panel" id="aggregate-panel">
     <h2>Aggregate NERO</h2>
     <select id="label-select" style="margin:10px; padding:6px; font-size:14px;">
@@ -116,7 +116,7 @@
     <p id="loading-msg" style="display:none;">Computing aggregate NERO...</p>
   </div>
 
-  <!-- 2️⃣ Middle: Individual NERO -->
+  <!-- 2 Middle: Individual NERO -->
   <div class="panel" id="nero-panel">
     <h2>Individual NERO</h2>
     <canvas id="original-canvas" width="120" height="120"></canvas>
@@ -125,7 +125,7 @@
     <div id="angle-value">Angle: 0°</div>
   </div>
 
-  <!-- 3️⃣ Right: PCA -->
+  <!-- 3 Right: PCA -->
   <div class="panel" id="pca-panel">
     <h2>PCA Embedding</h2>
     <div id="pca"></div>
@@ -134,7 +134,7 @@
 
   <script>
     // ===== Load PCA data from Flask =====
-    const data = {{ data | safe }};
+    const data = {{ data | safe }};   // ensures read correctly
 
     // ===== Generate discrete color palette =====
     const uniqueLabels = [...new Set(data.map(d => d.label))].sort();
@@ -150,7 +150,7 @@
     uniqueLabels.forEach((lbl, i) => labelToColor[lbl] = palette[i % palette.length]);
     const colors = data.map(d => labelToColor[d.label]);
 
-    // ===== Configure PCA scatter =====
+    // ===== Configure PCA scatter tooltip =====
     const trace = {
       x: data.map(d => d.x),
       y: data.map(d => d.y),
@@ -244,9 +244,6 @@
       const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
       return `rgba(${r},${g},${b},${alpha})`;
     }
-
-    // Once at startup, render PCA normally (you already do this):
-    // Plotly.newPlot('pca', [trace], layout, {responsive: true, displaylogo: false});
 
     // Keep your existing loadAggregate call
     loadAggregate("All");
