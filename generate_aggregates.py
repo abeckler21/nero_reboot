@@ -83,8 +83,8 @@ for lbl in labels_to_run:
         outpath = os.path.join(OUTPUT_DIR, f"aggregate_{lbl}.json")
         with open(outpath, "w") as f:
             json.dump(fig, f, cls=PlotlyJSONEncoder)
-        print(f"[✓] Saved {lbl} → {outpath}")
+        print(f"Saved {lbl} - {outpath}")
     else:
-        print(f"[x] Skipped {lbl}")
+        print(f"Skipped {lbl}")
 
 print("All aggregate plots generated and saved.")
