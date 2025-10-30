@@ -59,7 +59,7 @@ def get_nero():
     image = sample_df.drop("label", axis=1).iloc[i].values.reshape(28, 28)
 
     # --- Compute NERO orbit ---
-    losses, angles = evaluate_orbit(
+    confidences, angles = evaluate_orbit(
         model,
         image,
         label_raw=raw_label,
@@ -73,7 +73,7 @@ def get_nero():
     ax.imshow(image, cmap="gray")
     ax.axis("off")
     buf = BytesIO()
-    fig_img.savefig(buf, format="png", bbox_inches="tight", dpi=150)  #img to binary PNG bytes
+    fig_img.savefig(buf, format="png", bbox_inches="tight", dpi=150)  # img to binary PNG bytes
     plt.close(fig_img)
     buf.seek(0) # reset buffer to read
     image_b64 = base64.b64encode(buf.read()).decode("utf-8") 
@@ -81,7 +81,7 @@ def get_nero():
     # --- Create Plotly NERO polar plot ---
     theta_deg = np.degrees(angles)
     fig = plot_nero(
-        r=losses,
+        r=confidences,
         theta_deg=theta_deg,
         label=raw_label,
         sample_idx=i,
