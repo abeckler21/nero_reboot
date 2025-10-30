@@ -3,32 +3,43 @@ import numpy as np
 import pandas as pd
 import os
 from tensorflow import keras
-from sklearn.decomposition import PCA
 import json
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import base64
+from io import BytesIO
+from plotly.utils import PlotlyJSONEncoder
 from nero_eval import evaluate_orbit, plot_nero, compute_pca_embeddings
+
 
 app = Flask(__name__)
 
-# --- Load model and data once ---
+# =====================================================
+#  Load model on starting app 
+# =====================================================
 print("Loading model and data...")
 model = keras.models.load_model("training/models/model01.keras")
 train_df = pd.read_csv("training/sign_mnist_train.csv")
 test_df = pd.read_csv("training/sign_mnist_test.csv")
 
+
+# =====================================================
+#  Compute PCA on boot up
+# =====================================================
 unique_labels = sorted(np.unique(train_df["label"].values))
 label_map = {old: new for new, old in enumerate(unique_labels)}
-
 coords, labels, sample_df = compute_pca_embeddings(test_df, model, 500)
 print("PCA computed for", len(labels), "samples")
 
-# --- Routes ---
 
+# =====================================================
+#  Various Flask routes
+# =====================================================
+# --- Index ---
 @app.route("/")
 def index():
-    # Prepare data for Plotly scatter
+    # Prepare PCA data for Plotly scatter
     data = [
         {"x": float(coords[i, 0]),
          "y": float(coords[i, 1]),
@@ -39,16 +50,10 @@ def index():
     return render_template("index.html", data=json.dumps(data))
 
 
+# --- Get Individual Nero Plot ---
 @app.route("/get_nero", methods=["POST"])
 def get_nero():
     """Compute NERO orbit and return original image + styled Plotly JSON for NERO plot."""
-    import base64
-    from io import BytesIO
-    import matplotlib.pyplot as plt
-    import plotly.graph_objects as go
-    from plotly.utils import PlotlyJSONEncoder
-    import json
-
     i = int(request.json.get("index"))
     raw_label = int(sample_df.iloc[i]["label"])
     image = sample_df.drop("label", axis=1).iloc[i].values.reshape(28, 28)
@@ -68,14 +73,13 @@ def get_nero():
     ax.imshow(image, cmap="gray")
     ax.axis("off")
     buf = BytesIO()
-    fig_img.savefig(buf, format="png", bbox_inches="tight", dpi=150)
+    fig_img.savefig(buf, format="png", bbox_inches="tight", dpi=150)  #img to binary PNG bytes
     plt.close(fig_img)
-    buf.seek(0)
-    image_b64 = base64.b64encode(buf.read()).decode("utf-8")
+    buf.seek(0) # reset buffer to read
+    image_b64 = base64.b64encode(buf.read()).decode("utf-8") 
 
     # --- Create Plotly NERO polar plot ---
     theta_deg = np.degrees(angles)
-
     fig = plot_nero(
         r=losses,
         theta_deg=theta_deg,
@@ -83,9 +87,7 @@ def get_nero():
         sample_idx=i,
         include_indicator=True
     )
-
     nero_json = json.dumps(fig, cls=PlotlyJSONEncoder)
-
     return jsonify({
         "label": int(raw_label),
         "sample": i,
@@ -94,6 +96,7 @@ def get_nero():
     })
 
 
+# --- Get Aggregate Nero Plot ---
 @app.route("/get_aggregate_nero", methods=["POST"])
 def get_aggregate_nero():
     label = request.json.get("label")
@@ -105,5 +108,8 @@ def get_aggregate_nero():
     return jsonify({"nero_plot": nero_json, "label": label})
 
 
+# =====================================================
+#  Run the app
+# =====================================================
 if __name__ == "__main__":
     app.run(debug=True)
