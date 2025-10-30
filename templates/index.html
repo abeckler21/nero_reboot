@@ -42,7 +42,7 @@
       text-align: center;
     }
 
-    /* ✅ give plotly containers explicit height */
+    /* give plotly containers explicit height */
     #aggregate-plot, #nero-plot, #pca {
       flex: 1;
       width: 100%;
@@ -96,7 +96,7 @@
       }
     }
 
-    /* ✅ loading message styling */
+    /*  loading message styling */
     #loading-msg {
       text-align: center;
       color: #666;
@@ -202,7 +202,7 @@
       labelSelect.appendChild(opt);
     });
 
-    // ✅ fixed version: don't overwrite aggregate-plot div
+    //  fixed version: don't overwrite aggregate-plot div
     function loadAggregate(label) {
       loadingMsg.style.display = "block";
       aggregateDiv.innerHTML = "";
@@ -231,8 +231,56 @@
       });
     }
 
+    // Helper: map letters to numeric labels (A..Y skipping J,Z)
+    const LETTERS = [];
+    for (let c = 65; c <= 90; c++) if (c !== 74 && c !== 90) LETTERS.push(String.fromCharCode(c));
+    const VALID_LABELS = LETTERS.map((_, i) => (i < 9 ? i : i + 1));            // 0..8,10..24
+    const LABEL_NUM_BY_LETTER = Object.fromEntries(LETTERS.map((l, i) => [l, VALID_LABELS[i]]));
+
+    // Helper: convert hex (#RRGGBB) to rgba(r,g,b,a)
+    function hexToRgba(hex, alpha) {
+      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      if (!m) return `rgba(0,0,0,${alpha})`;
+      const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+
+    // Once at startup, render PCA normally (you already do this):
+    // Plotly.newPlot('pca', [trace], layout, {responsive: true, displaylogo: false});
+
+    // Keep your existing loadAggregate call
     loadAggregate("All");
-    labelSelect.addEventListener("change", e => loadAggregate(e.target.value));
+
+    // Replace your dropdown listener with this:
+    labelSelect.addEventListener("change", e => {
+      const selected = e.target.value;
+      loadAggregate(selected); // left panel stays the same
+
+      // Figure out which numeric label is "selected"
+      let selectedLabelNum = null;
+      if (selected !== "All") {
+        selectedLabelNum = LABEL_NUM_BY_LETTER[selected];
+      }
+
+      // Build per-point colors and sizes with alpha adjustment
+      const colorArr = [];
+      const sizeArr  = [];
+      for (const d of data) {
+        const baseHex = labelToColor[d.label] || "#7f7f7f";
+        const isSelected = (selected === "All") || (d.label === selectedLabelNum);
+        const alpha = isSelected ? 1.0 : 0.1;       // <- fade non-selected to 0.1
+        const size  = isSelected ? 8 : 5;           // optional emphasis
+        colorArr.push(hexToRgba(baseHex, alpha));
+        sizeArr.push(size);
+      }
+
+      // Update the existing PCA trace in place (trace index 0)
+      Plotly.restyle('pca', {
+        'marker.color': [colorArr],
+        'marker.size':  [sizeArr]
+      }, [0]);
+    });
+
 
     // ===== Individual NERO + rotation =====
     document.getElementById('pca').on('plotly_click', function(event) {
