@@ -6,7 +6,7 @@ from tensorflow import keras
 from sklearn.decomposition import PCA
 import plotly.graph_objects as go
 from plotly.utils import PlotlyJSONEncoder
-from nero_eval import evaluate_orbit, plot_nero, label_to_letter  # reuse existing helpers
+from nero_eval import evaluate_orbit, plot_nero, compute_pca_embeddings
 
 # --- Configuration ---
 OUTPUT_DIR = "static/aggregate_nero"
@@ -21,18 +21,7 @@ test_df = pd.read_csv("training/sign_mnist_test.csv")
 unique_labels = sorted(np.unique(train_df["label"].values))
 label_map = {old: new for new, old in enumerate(unique_labels)}
 
-# --- Utility ---
-def compute_pca_embeddings(n_samples=500):
-    sample_df = test_df.sample(n_samples, random_state=42).reset_index(drop=True)
-    images = sample_df.drop("label", axis=1).values.reshape(-1, 28, 28, 1).astype("float32") / 255.0
-    labels = sample_df["label"].values
-    feature_model = keras.Sequential(model.layers[:-1])
-    feats = feature_model.predict(images, verbose=0)
-    pca = PCA(n_components=2)
-    coords = pca.fit_transform(feats)
-    return coords, labels, sample_df
-
-coords, labels, sample_df = compute_pca_embeddings(500)
+coords, labels, sample_df = compute_pca_embeddings(test_df, model, 500)
 print("PCA computed for", len(labels), "samples")
 
 # --- Label setup ---

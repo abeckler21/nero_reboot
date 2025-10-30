@@ -220,25 +220,15 @@ def plot_nero(r, theta_deg, title=None, include_indicator=False, label=None, sam
     return fig
 
 
-# =====================================================
-#  PCA
-# =====================================================
-def compute_feature_pca(model, test_df, label_map, n_samples=500):
-    """Extract penultimate-layer features for a subset of images, run PCA (2D), and return coordinates."""
+# --- Compute PCA coordinates once ---
+def compute_pca_embeddings(test_df, model, n_samples=500):
     sample_df = test_df.sample(n_samples, random_state=42).reset_index(drop=True)
-
     images = sample_df.drop("label", axis=1).values.reshape(-1, 28, 28, 1).astype("float32") / 255.0
     labels = sample_df["label"].values
 
-    # Build feature-extraction model (robust version)
     feature_model = keras.Sequential(model.layers[:-1])
-
     feats = feature_model.predict(images, verbose=0)
 
     pca = PCA(n_components=2)
     coords = pca.fit_transform(feats)
-
-    mapped_labels = np.array([label_map[int(lbl)] for lbl in labels])
-    return coords, images, labels, mapped_labels
-
-
+    return coords, labels, sample_df
