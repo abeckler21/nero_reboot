@@ -6,8 +6,7 @@ from tensorflow import keras
 from sklearn.decomposition import PCA
 import plotly.graph_objects as go
 from plotly.utils import PlotlyJSONEncoder
-from nero_eval import evaluate_orbit
-from app import plot_nero, label_to_letter  # reuse existing helpers
+from nero_eval import evaluate_orbit, plot_nero, label_to_letter  # reuse existing helpers
 
 # --- Configuration ---
 OUTPUT_DIR = "static/aggregate_nero"
