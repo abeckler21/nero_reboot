@@ -1,13 +1,13 @@
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
 from tensorflow import keras
 from sklearn.decomposition import PCA
-from matplotlib.widgets import Button
-import pandas as pd
 import plotly.graph_objects as go
 
 
+# =====================================================
+#  Label to letters
+# =====================================================
 def label_to_letter(label: int) -> str:
     """
     Convert SignMNIST label (0-24) to its corresponding letter (A-Y, skipping J and Z).
@@ -26,7 +26,7 @@ def label_to_letter(label: int) -> str:
 
 
 # =====================================================
-#  ORBIT GENERATION (new helper function)
+#  Orbit generation to calculate all image transformations
 # =====================================================
 def generate_orbit(
     image: np.ndarray,
@@ -34,27 +34,6 @@ def generate_orbit(
     num_steps: int = 36,
     transform_fn=None
 ):
-    """
-    Generate the orbit G(x) for a given image under the specified transformation group.
-
-    Parameters
-    ----------
-    image : np.ndarray
-        Input image (H x W or H x W x C).
-    group : str
-        Type of transformation group ('rotation', 'translation', 'flip', etc.).
-    num_steps : int
-        Number of discrete group elements (e.g. 36 => 10° increments for rotation).
-    transform_fn : callable, optional
-        Custom transformation φ(g, x). If provided, it overrides built-in group logic.
-
-    Returns
-    -------
-    orbit : list[np.ndarray]
-        List of transformed images [φ(g₁,x), φ(g₂,x), …].
-    group_elements : list
-        List of group parameters corresponding to each transformation (e.g. angles or shifts).
-    """
     image = np.asarray(image)
     if image.ndim == 1:
         image = image.reshape(28, 28)
@@ -64,6 +43,7 @@ def generate_orbit(
     group_elements = []
 
     if transform_fn is not None:
+        # if given alternate transform do it
         for g in range(num_steps):
             orbit.append(transform_fn(image, g))
             group_elements.append(g)
@@ -71,7 +51,6 @@ def generate_orbit(
 
     h, w = image.shape[:2]
     center = (w // 2, h // 2)
-
     if group == "rotation":
         for i in range(num_steps):
             angle = 360 * i / num_steps
@@ -101,7 +80,7 @@ def generate_orbit(
 
 
 # =====================================================
-#  NERO EVALUATION EXAMPLE
+#  Evaluate confidences of all images in orbit
 # =====================================================
 def evaluate_orbit(
     model,
@@ -112,12 +91,8 @@ def evaluate_orbit(
     label_map=None,             # the dict used in training to remap labels
     loss_fn=None
 ):
-    """
-    Compute model confidence over the orbit. Assumes model outputs probabilities
-    (i.e., final Dense(..., activation='softmax')).
-    """
     orbit, group_elements = generate_orbit(image, group, num_steps)
-    losses = []
+    confidences = []
 
     # Map raw label -> contiguous class index (0..23) exactly as in training
     if label_map is not None:
@@ -131,36 +106,21 @@ def evaluate_orbit(
         if x_prime.ndim == 2:                                       # (H,W) -> (H,W,1)
             x_prime = np.expand_dims(x_prime, -1)
         x_prime = np.expand_dims(x_prime, 0)                        # (1,H,W,1)
-
         y_pred = model.predict(x_prime, verbose=0)[0]               # probabilities shape (C,)
-
         if loss_fn is not None:
-            # If you really want a loss, pass a function expecting (probs, class_index)
-            loss = float(loss_fn(y_pred, correct_class))
+            conf = float(loss_fn(y_pred, correct_class))
         else:
-            loss = float(y_pred[correct_class])                     # confidence for true class
+            conf = float(y_pred[correct_class])                     # confidence for true class
 
-        losses.append(loss)
+        confidences.append(conf)
 
-    return losses, group_elements
-
-
+    return confidences, group_elements
 
 
+# =====================================================
+#  Create polar plot of NERO evaluated orbit
+# =====================================================
 def plot_nero(r, theta_deg, title=None, include_indicator=False, label=None, sample_idx=None):
-    """Return a Plotly figure object for a NERO polar plot.
-
-    Args:
-        r (array-like): Radial values (confidences/losses).
-        theta_deg (array-like): Angles in degrees (same length as r).
-        title (str, optional): Figure title.
-        include_indicator (bool): If True, adds the green 0° indicator line.
-        label (int, optional): Label/class index (for title).
-        sample_idx (int, optional): Sample index (for title).
-
-    Returns:
-        plotly.graph_objects.Figure
-    """
     # Create figure
     fig = go.Figure()
 
@@ -205,7 +165,7 @@ def plot_nero(r, theta_deg, title=None, include_indicator=False, label=None, sam
                 tickfont=dict(color="black"),
             ),
             angularaxis=dict(
-                rotation=0,  # 0° = East
+                rotation=0,  # 0 deg = East
                 direction="counterclockwise",
                 gridcolor="black",
                 linecolor="black",
@@ -220,7 +180,9 @@ def plot_nero(r, theta_deg, title=None, include_indicator=False, label=None, sam
     return fig
 
 
-# --- Compute PCA coordinates once ---
+# =====================================================
+#  Compute the PCA coordinate stuff
+# =====================================================
 def compute_pca_embeddings(test_df, model, n_samples=500):
     sample_df = test_df.sample(n_samples, random_state=42).reset_index(drop=True)
     images = sample_df.drop("label", axis=1).values.reshape(-1, 28, 28, 1).astype("float32") / 255.0
