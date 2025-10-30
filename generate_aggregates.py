@@ -3,12 +3,13 @@ import json
 import numpy as np
 import pandas as pd
 from tensorflow import keras
-from sklearn.decomposition import PCA
-import plotly.graph_objects as go
 from plotly.utils import PlotlyJSONEncoder
 from nero_eval import evaluate_orbit, plot_nero, compute_pca_embeddings
 
-# --- Configuration ---
+
+# =====================================================
+#  Setup + Preprocessing
+# =====================================================
 OUTPUT_DIR = "static/aggregate_nero"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -29,8 +30,12 @@ letters = [chr(c) for c in range(ord("A"), ord("Z") + 1) if c not in (ord("J"), 
 valid_labels = [i if i < 9 else i + 1 for i in range(len(letters))]
 label_map_inv = dict(zip(letters, valid_labels))
 
-# --- Aggregate computation ---
+
+# =====================================================
+#  Compute aggregate data + run the plot
+# =====================================================
 def compute_aggregate_for_label(label_name, max_samples=50, num_steps=72, group="rotation"):
+    label_num = "0-24"
     if label_name == "All":
         subset_df = sample_df
     else:
@@ -45,7 +50,7 @@ def compute_aggregate_for_label(label_name, max_samples=50, num_steps=72, group=
         image = row.drop("label").values.reshape(28, 28)
         raw_label = int(row["label"])
         try:
-            conf, angles = evaluate_orbit(
+            conf, _ = evaluate_orbit(
                 model, image,
                 label_raw=raw_label,
                 group=group,
@@ -69,12 +74,15 @@ def compute_aggregate_for_label(label_name, max_samples=50, num_steps=72, group=
     fig = plot_nero(
         r=mean_conf.tolist(),
         theta_deg=theta_deg.tolist(),
-        title=f"Aggregate NERO - {label_name}",
+        title=f"Aggregate NERO - {label_name} (label = {label_num})",
         include_indicator=False
     )
     return fig
 
-# --- Run for all labels ---
+
+# =====================================================
+#  Run script for all labels (All + 0-24/9)
+# =====================================================
 labels_to_run = ["All"] + letters
 for lbl in labels_to_run:
     print(f"\n=== Generating aggregate for {lbl} ===")
