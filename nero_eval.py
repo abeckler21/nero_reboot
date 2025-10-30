@@ -10,15 +10,18 @@ import plotly.graph_objects as go
 
 def label_to_letter(label: int) -> str:
     """
-    Convert SignMNIST label (0-23) to its corresponding letter (A-Y, skipping J and Z).
+    Convert SignMNIST label (0-24) to its corresponding letter (A-Y, skipping J and Z).
     """
     # Letters A-Z, excluding J (9) and Z (25)
     letters = [chr(c) for c in range(ord('A'), ord('Z') + 1) if c not in (ord('J'), ord('Z'))]
     
-    if 0 <= label < len(letters):
-        return letters[label]
+    if 0 <= label < 25:
+        if label < 9:
+            return letters[label]
+        else:
+            return letters[label - 1]
     else:
-        raise ValueError(f"Label {label} out of valid range (0-{len(letters)-1})")
+        raise ValueError(f"Label {label} out of valid range (0-24)")
 
 
 
